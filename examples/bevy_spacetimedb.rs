@@ -1,7 +1,7 @@
 use bevy::{log::LogPlugin, prelude::*};
 use bevy_spacetimedb::{
     ReducerResultEvent, StdbConnectedEvent, StdbConnection, StdbConnectionErrorEvent,
-    StdbDisonnectedEvent, StdbPlugin,
+    StdbDisconnectedEvent, StdbPlugin,
 };
 use spacetimedb_sdk::{ReducerEvent, Table};
 use stdb::{DbConnection, PlayersTableAccess, Reducer, register_player};
@@ -29,7 +29,7 @@ pub fn main() {
                         })
                         .on_disconnect(move |_ctx, err| {
                             send_disconnected
-                                .send(StdbDisonnectedEvent { err })
+                                .send(StdbDisconnectedEvent { err })
                                 .unwrap();
                         })
                         .on_connect(move |_ctx, _id, _c| {

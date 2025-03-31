@@ -7,7 +7,7 @@ pub struct StdbConnectedEvent;
 
 /// An event that is triggered when a connection to SpacetimeDB is lost.
 #[derive(Event)]
-pub struct StdbDisonnectedEvent {
+pub struct StdbDisconnectedEvent {
     /// The error that caused the disconnection, if any.
     pub err: Option<Error>,
 }

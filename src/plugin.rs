@@ -5,13 +5,13 @@ use spacetimedb_sdk::{DbContext, Table, TableWithPrimaryKey};
 
 use crate::{
     DeleteEvent, InsertEvent, ReducerResultEvent, StdbConnectedEvent, StdbConnection,
-    StdbConnectionErrorEvent, StdbDisonnectedEvent, UpdateEvent, channel_receiver::AppExtensions,
+    StdbConnectionErrorEvent, StdbDisconnectedEvent, UpdateEvent, channel_receiver::AppExtensions,
 };
 
 /// A function that builds a connection to the database.
 pub type FnBuildConnection<T> = fn(
     Sender<StdbConnectedEvent>,
-    Sender<StdbDisonnectedEvent>,
+    Sender<StdbDisconnectedEvent>,
     Sender<StdbConnectionErrorEvent>,
     &mut App,
 ) -> T;
@@ -114,12 +114,12 @@ impl<T: DbContext> Default for StdbPlugin<T> {
 impl<T: DbContext + Send + Sync + 'static> Plugin for StdbPlugin<T> {
     fn build(&self, app: &mut App) {
         let (send_connected, recv_connected) = channel::<StdbConnectedEvent>();
-        let (send_disconnected, recv_disconnected) = channel::<StdbDisonnectedEvent>();
+        let (send_disconnected, recv_disconnected) = channel::<StdbDisconnectedEvent>();
         let (send_connect_error, recv_connect_error) = channel::<StdbConnectionErrorEvent>();
 
         app.add_event_channel::<StdbConnectionErrorEvent>(recv_connect_error)
             .add_event_channel::<StdbConnectedEvent>(recv_connected)
-            .add_event_channel::<StdbDisonnectedEvent>(recv_disconnected);
+            .add_event_channel::<StdbDisconnectedEvent>(recv_disconnected);
 
         let conn_builder = self
             .connection_builder

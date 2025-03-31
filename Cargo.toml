@@ -3,7 +3,7 @@ name = "bevy_spacetimedb"
 description = "USe SpacetimeDB in your Bevy application"
 repository = "https://github.com/JulienLavocat/bevy_spacetimedb"
 readme = "README.md"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 license = "Apache-2.0"
 

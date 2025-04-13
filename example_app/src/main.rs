@@ -1,16 +1,27 @@
 use bevy::{log::LogPlugin, prelude::*};
 use bevy_spacetimedb::{
-    ReducerResultEvent, StdbConnectedEvent, StdbConnection, StdbConnectionErrorEvent,
-    StdbDisconnectedEvent, StdbPlugin,
+    ReadInsertEvent, ReadReducerEvent, ReducerResultEvent, StdbConnectedEvent, StdbConnection,
+    StdbConnectionErrorEvent, StdbDisconnectedEvent, StdbPlugin, register_reducers, tables,
 };
 use spacetimedb_sdk::{ReducerEvent, Table};
-use stdb::{DbConnection, PlayersTableAccess, Reducer, register_player};
+use stdb::{
+    DbConnection, GameServersTableAccess, Planet, PlanetsTableAccess, Player, PlayersTableAccess,
+    Reducer, StarSystemsTableAccess, gs_register, player_register,
+};
 
 mod stdb;
 
 #[derive(Clone, Debug)]
 pub struct RegisterPlayerEvent {
     pub event: ReducerEvent<Reducer>,
+    pub id: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct GsRegisterEvent {
+    pub event: ReducerEvent<Reducer>,
+    pub ip: String,
+    pub port: u16,
 }
 
 pub fn main() {
@@ -42,22 +53,30 @@ pub fn main() {
                     conn
                 })
                 .with_events(|plugin, app, db, reducers| {
-                    plugin
-                        .on_insert(app, db.players())
-                        .on_update(app, db.players())
-                        .on_delete(app, db.players());
+                    tables!(
+                        players,
+                        game_servers,
+                        (star_systems, no_update),
+                        (planets, no_update)
+                    );
 
-                    let send_register_player = plugin.reducer_event::<RegisterPlayerEvent>(app);
-                    reducers.on_register_player(move |ctx, _, _| {
-                        send_register_player
-                            .send(ReducerResultEvent::new(RegisterPlayerEvent {
-                                event: ctx.event.clone(),
-                            }))
-                            .unwrap();
-                    });
+                    register_reducers!(
+                        on_player_register(ctx, id) => RegisterPlayerEvent {
+                            event: ctx.event.clone(),
+                            id: *id
+                        },
+                        on_gs_register(ctx, ip, port) => GsRegisterEvent {
+                            event: ctx.event.clone(),
+                            ip: ip.clone(),
+                            port: *port
+                        }
+                    );
                 }),
         )
-        .add_systems(Update, (on_connected, on_register_player))
+        .add_systems(
+            Update,
+            (on_connected, on_register_player, on_gs_register, on_player),
+        )
         .run();
 }
 
@@ -69,7 +88,7 @@ fn on_connected(
         info!("Connected to SpacetimeDB");
 
         // Call any reducers
-        stdb.reducers().register_player("".to_owned(), 1).unwrap();
+        stdb.reducers().player_register(1).unwrap();
 
         // Subscribe to any tables
         stdb.subscribe()
@@ -82,8 +101,20 @@ fn on_connected(
     }
 }
 
-fn on_register_player(mut events: EventReader<ReducerResultEvent<RegisterPlayerEvent>>) {
+fn on_register_player(mut events: ReadReducerEvent<RegisterPlayerEvent>) {
     for event in events.read() {
         info!("Registered player: {:?}", event);
+    }
+}
+
+fn on_gs_register(mut events: ReadReducerEvent<GsRegisterEvent>) {
+    for event in events.read() {
+        info!("Registered game server: {:?}", event);
+    }
+}
+
+fn on_player(mut events: ReadInsertEvent<Player>) {
+    for event in events.read() {
+        info!("Player inserted: {:?}", event.row);
     }
 }

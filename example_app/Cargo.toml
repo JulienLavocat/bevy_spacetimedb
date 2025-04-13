@@ -1,0 +1,9 @@
+[package]
+name = "example_app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy_spacetimedb = { path = "../bevy_spacetimedb" }
+bevy = "0.15.3"
+spacetimedb-sdk = "1.0.1"

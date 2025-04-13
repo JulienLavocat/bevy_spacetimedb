@@ -1072,7 +1072,16 @@ name = "bevy_spacetimedb"
 version = "0.2.2"
 dependencies = [
  "bevy",
+ "bevy_spacetimedb_macros",
  "spacetimedb-sdk",
+]
+
+[[package]]
+name = "bevy_spacetimedb_macros"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -2164,6 +2173,15 @@ checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
 dependencies = [
  "event-listener 5.4.0",
  "pin-project-lite",
+]
+
+[[package]]
+name = "example_app"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy_spacetimedb",
+ "spacetimedb-sdk",
 ]
 
 [[package]]

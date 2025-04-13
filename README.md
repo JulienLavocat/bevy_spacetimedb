@@ -8,7 +8,7 @@ This plugin will provide you with:
 - Connection lifecycle events: `StdbConnectedEvent`, `StdbDisonnectedEvent`, `StdbConnectionErrorEvent` as Bevy's `EventsReader`
 - All the tables events (row inserted/updated/deleted): `InsertEvent\<MyRow>`, `UpdateEvent\<MyRow>`, `DeleteEvent\<MyRow>` as `EventsReader`
 
-This is still WIP and needs a lot of documentation and testing.
+Check the example app in `/example_app` for a complete example of how to use the plugin.
 
 ## Usage
 

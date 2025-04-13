@@ -3,8 +3,8 @@
 // side is bevy's EventReader<T>, and it automatically bridges between the two.
 
 use bevy::prelude::*;
-use std::sync::Mutex;
 use std::sync::mpsc::Receiver;
+use std::sync::Mutex;
 
 #[derive(Resource, Deref, DerefMut)]
 struct ChannelReceiver<T>(Mutex<Receiver<T>>);

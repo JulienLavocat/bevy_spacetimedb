@@ -1,6 +1,15 @@
+<div align="center">
+
 # bevy_spacetimedb
 
 Use [SpacetimeDB](https://spacetimedb.com) in your Bevy application.
+
+[![crates.io](https://img.shields.io/crates/v/bevy_spacetimedb)](https://crates.io/crates/bevy_spacetimedb)
+[![docs.rs](https://docs.rs/bevy_spacetimedb/badge.svg)](https://docs.rs/bevy_spacetimedb)
+
+</div>
+
+## Highlights
 
 This plugin will provide you with:
 
@@ -12,6 +21,7 @@ Check the example app in `/example_app` for a complete example of how to use the
 
 ## Usage
 
+0. Add to your crate: `cargo add bevy_spacetimedb`
 1. Add the plugin to your bevy application:
 
 ```rust

@@ -9,32 +9,42 @@ use crate::{
     channel_receiver::AppExtensions,
 };
 
-/// A function that builds a connection to the database.
-pub type FnBuildConnection<T> = fn(
-    Sender<StdbConnectedEvent>,
-    Sender<StdbDisconnectedEvent>,
-    Sender<StdbConnectionErrorEvent>,
-    &mut App,
-) -> T;
 /// A function that registers callbacks for events.
-pub type FnRegisterCallbacks<T> =
-    fn(&StdbPlugin<T>, &mut App, &<T as DbContext>::DbView, &<T as DbContext>::Reducers);
+pub type FnRegisterCallbacks<T, C> =
+    fn(&StdbPlugin<T, C>, &mut App, &<T as DbContext>::DbView, &<T as DbContext>::Reducers);
 
 /// A plugin for SpacetimeDB connections.
-pub struct StdbPlugin<T: DbContext> {
-    connection_builder: Option<FnBuildConnection<T>>,
-    register_events: Option<FnRegisterCallbacks<T>>,
+pub struct StdbPlugin<T: DbContext, C>
+where
+    C: Fn(
+        Sender<StdbConnectedEvent>,
+        Sender<StdbDisconnectedEvent>,
+        Sender<StdbConnectionErrorEvent>,
+        &mut App,
+    ) -> T,
+{
+    /// A function that builds a connection to the database.
+    connection_builder: Option<C>,
+    register_events: Option<FnRegisterCallbacks<T, C>>,
 }
 
-impl<TConnection: DbContext> StdbPlugin<TConnection> {
+impl<TConnection: DbContext, C> StdbPlugin<TConnection, C>
+where
+    C: Fn(
+        Sender<StdbConnectedEvent>,
+        Sender<StdbDisconnectedEvent>,
+        Sender<StdbConnectionErrorEvent>,
+        &mut App,
+    ) -> TConnection,
+{
     /// Adds your connection builder function, it will be called when the plugin is built.
-    pub fn with_connection(mut self, build_connection: FnBuildConnection<TConnection>) -> Self {
+    pub fn with_connection(mut self, build_connection: C) -> Self {
         self.connection_builder = Some(build_connection);
         self
     }
 
     /// Adds a function to register all events required by a Bevy application
-    pub fn with_events(mut self, register_callbacks: FnRegisterCallbacks<TConnection>) -> Self {
+    pub fn with_events(mut self, register_callbacks: FnRegisterCallbacks<TConnection, C>) -> Self {
         self.register_events = Some(register_callbacks);
         self
     }
@@ -132,7 +142,18 @@ impl<TConnection: DbContext> StdbPlugin<TConnection> {
     }
 }
 
-impl<T: DbContext> Default for StdbPlugin<T> {
+impl<T: DbContext, C> Default for StdbPlugin<T, C>
+where
+    C: Send
+        + Sync
+        + 'static
+        + Fn(
+            Sender<StdbConnectedEvent>,
+            Sender<StdbDisconnectedEvent>,
+            Sender<StdbConnectionErrorEvent>,
+            &mut App,
+        ) -> T,
+{
     fn default() -> Self {
         Self {
             connection_builder: None,
@@ -141,7 +162,18 @@ impl<T: DbContext> Default for StdbPlugin<T> {
     }
 }
 
-impl<T: DbContext + Send + Sync + 'static> Plugin for StdbPlugin<T> {
+impl<T: DbContext + Send + Sync + 'static, C> Plugin for StdbPlugin<T, C>
+where
+    C: Send
+        + Sync
+        + 'static
+        + Fn(
+            Sender<StdbConnectedEvent>,
+            Sender<StdbDisconnectedEvent>,
+            Sender<StdbConnectionErrorEvent>,
+            &mut App,
+        ) -> T,
+{
     fn build(&self, app: &mut App) {
         let (send_connected, recv_connected) = channel::<StdbConnectedEvent>();
         let (send_disconnected, recv_disconnected) = channel::<StdbDisconnectedEvent>();
@@ -153,6 +185,7 @@ impl<T: DbContext + Send + Sync + 'static> Plugin for StdbPlugin<T> {
 
         let conn_builder = self
             .connection_builder
+            .as_ref()
             .expect("Connection builder is not set, use with_connection() method");
         let conn = conn_builder(send_connected, send_disconnected, send_connect_error, app);
 

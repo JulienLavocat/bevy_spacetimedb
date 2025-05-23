@@ -14,7 +14,7 @@ Use [SpacetimeDB](https://spacetimedb.com) in your Bevy application.
 This plugin will provide you with:
 
 - A resource `StdbConnection` to call your reducers, subscribe to tables, etc.
-- Connection lifecycle events: `StdbConnectedEvent`, `StdbDisonnectedEvent`, `StdbConnectionErrorEvent` as Bevy's `EventsReader`
+- Connection lifecycle events: `StdbConnectedEvent`, `StdbDisconnectedEvent`, `StdbConnectionErrorEvent` as Bevy's `EventsReader`
 - All the tables events (row inserted/updated/deleted): `InsertEvent\<MyRow>`, `UpdateEvent\<MyRow>`, `DeleteEvent\<MyRow>` as `EventsReader`
 
 Check the example app in `/example_app` for a complete example of how to use the plugin.
@@ -51,7 +51,7 @@ App::new()
                     })
                     .on_disconnect(move |_ctx, err| {
                         send_disconnected
-                            .send(StdbDisonnectedEvent { err })
+                            .send(StdbDisconnectedEvent { err })
                             .unwrap();
                     })
                     .on_connect(move |_ctx, _id, _c| {
@@ -90,7 +90,7 @@ App::new()
 ```
 
 2. Add a system handling connection events
-   You can also add systems for `StdbDisonnectedEvent` and `StdbConnectionErrorEvent`
+   You can also add systems for `StdbDisconnectedEvent` and `StdbConnectionErrorEvent`
 
 ```rust
 fn on_connected(

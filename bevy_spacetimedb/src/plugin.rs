@@ -1,6 +1,15 @@
-use std::sync::mpsc::{Sender, channel};
+use std::{
+    any::{Any, TypeId},
+    sync::{
+        Mutex,
+        mpsc::{Sender, channel},
+    },
+};
 
-use bevy::app::{App, Plugin};
+use bevy::{
+    app::{App, Plugin},
+    platform::collections::HashMap,
+};
 use spacetimedb_sdk::{DbContext, Table, TableWithPrimaryKey};
 
 use crate::{
@@ -26,6 +35,7 @@ where
     /// A function that builds a connection to the database.
     connection_builder: Option<C>,
     register_events: Option<FnRegisterCallbacks<T, C>>,
+    event_senders: Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
 }
 
 impl<TConnection: DbContext, C> StdbPlugin<TConnection, C>
@@ -54,12 +64,24 @@ where
     where
         TRow: Send + Sync + Clone + 'static,
     {
-        let (send, recv) = channel::<InsertEvent<TRow>>();
-        app.add_event_channel(recv);
+        let type_id = TypeId::of::<InsertEvent<TRow>>();
+
+        let mut map = self.event_senders.lock().unwrap();
+
+        let sender = map
+            .entry(type_id)
+            .or_insert_with(|| {
+                let (send, recv) = channel::<InsertEvent<TRow>>();
+                app.add_event_channel(recv);
+                Box::new(send)
+            })
+            .downcast_ref::<Sender<InsertEvent<TRow>>>()
+            .expect("Sender type mismatch")
+            .clone();
 
         table.on_insert(move |_ctx, row| {
             let event = InsertEvent { row: row.clone() };
-            send.send(event).unwrap();
+            sender.send(event).unwrap();
         });
 
         self
@@ -70,12 +92,23 @@ where
     where
         TRow: Send + Sync + Clone + 'static,
     {
-        let (send, recv) = channel::<DeleteEvent<TRow>>();
-        app.add_event_channel(recv);
+        let type_id = TypeId::of::<DeleteEvent<TRow>>();
+
+        let mut map = self.event_senders.lock().unwrap();
+        let sender = map
+            .entry(type_id)
+            .or_insert_with(|| {
+                let (send, recv) = channel::<DeleteEvent<TRow>>();
+                app.add_event_channel(recv);
+                Box::new(send)
+            })
+            .downcast_ref::<Sender<DeleteEvent<TRow>>>()
+            .expect("Sender type mismatch")
+            .clone();
 
         table.on_delete(move |_ctx, row| {
             let event = DeleteEvent { row: row.clone() };
-            send.send(event).unwrap();
+            sender.send(event).unwrap();
         });
 
         self
@@ -87,15 +120,26 @@ where
         TRow: Send + Sync + Clone + 'static,
         TTable: Table<Row = TRow> + TableWithPrimaryKey<Row = TRow>,
     {
-        let (send, recv) = channel::<UpdateEvent<TRow>>();
-        app.add_event_channel(recv);
+        let type_id = TypeId::of::<UpdateEvent<TRow>>();
+
+        let mut map = self.event_senders.lock().unwrap();
+        let sender = map
+            .entry(type_id)
+            .or_insert_with(|| {
+                let (send, recv) = channel::<UpdateEvent<TRow>>();
+                app.add_event_channel(recv);
+                Box::new(send)
+            })
+            .downcast_ref::<Sender<UpdateEvent<TRow>>>()
+            .expect("Sender type mismatch")
+            .clone();
 
         table.on_update(move |_ctx, old, new| {
             let event = UpdateEvent {
                 old: old.clone(),
                 new: new.clone(),
             };
-            send.send(event).unwrap();
+            sender.send(event).unwrap();
         });
 
         self
@@ -107,8 +151,19 @@ where
         TRow: Send + Sync + Clone + 'static,
         TTable: Table<Row = TRow> + TableWithPrimaryKey<Row = TRow>,
     {
-        let (send, recv) = channel::<InsertUpdateEvent<TRow>>();
-        app.add_event_channel(recv);
+        let type_id = TypeId::of::<InsertUpdateEvent<TRow>>();
+
+        let mut map = self.event_senders.lock().unwrap();
+        let send = map
+            .entry(type_id)
+            .or_insert_with(|| {
+                let (send, recv) = channel::<InsertUpdateEvent<TRow>>();
+                app.add_event_channel(recv);
+                Box::new(send)
+            })
+            .downcast_ref::<Sender<InsertUpdateEvent<TRow>>>()
+            .expect("Sender type mismatch")
+            .clone();
 
         let send_update = send.clone();
         table.on_update(move |_ctx, old, new| {
@@ -158,6 +213,7 @@ where
         Self {
             connection_builder: None,
             register_events: None,
+            event_senders: Mutex::new(HashMap::new()),
         }
     }
 }

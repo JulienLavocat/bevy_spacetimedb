@@ -68,13 +68,24 @@ App::new()
             })
             /// Register the events you want to receive (example: players and enemies inserted, updated, deleted) and your reducers
             .with_events(|plugin, app, db| {
-                plugin
-                    .on_insert(app, db.players())
-                    .on_update(app, db.players())
-                    .on_delete(app, db.players())
-                    .on_insert(app, db.enemies())
-                    .on_update(app, db.enemies())
-                    .on_delete(app, db.enemies());
+                tables!(
+                    players,
+                    enemies,
+                    (player_without_update, no_update),
+                );
+
+                register_reducers!(
+                    on_player_register(ctx, id) => RegisterPlayerEvent {
+                        event: ctx.event.clone(),
+                        id: *id
+                    },
+                    on_gs_register(ctx, ip, port) => GsRegisterEvent {
+                        event: ctx.event.clone(),
+                        ip: ip.clone(),
+                        port: *port
+                    }
+                );
+
 
                 let send_register_player = plugin.reducer_event::<RegisterPlayerEvent>(app);
                 reducers.on_register_player(move |ctx, reducer_arg_1, reducer_arg_2| {

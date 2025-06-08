@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![no_std]
 
 //! A bevy plugin for SpacetimeDB.
 

@@ -1,91 +1,37 @@
 use bevy::{log::LogPlugin, prelude::*};
 use bevy_spacetimedb::{
-    ReadInsertEvent, ReadReducerEvent, ReducerResultEvent, StdbConnectedEvent, StdbConnection,
-    StdbConnectionErrorEvent, StdbDisconnectedEvent, StdbPlugin, register_reducers, tables,
+    DeleteEvent, InsertEvent, ReducerResultEvent, RegisterReducerEvent, StdbConnectedEvent,
+    StdbConnection, StdbPlugin, TableEvents, UpdateEvent,
 };
-use spacetimedb_sdk::{ReducerEvent, Table};
-use stdb::{
-    DbConnection, GameServersTableAccess, PlanetsTableAccess, Player, PlayersTableAccess, Reducer,
-    StarSystemsTableAccess, gs_register, player_register,
+use spacetimedb_sdk::ReducerEvent;
+use stdb::{DbConnection, Reducer};
+
+use crate::stdb::gs_register_reducer::gs_register;
+use crate::stdb::gs_set_ready_reducer::gs_set_ready;
+use crate::stdb::{
+    GameServersTableAccess, PlanetsTableAccess, Player, PlayersTableAccess, RemoteModule,
+    RemoteReducers, RemoteTables,
 };
-
-use crate::stdb::RemoteModule;
-
 mod stdb;
 
-#[derive(Clone, Debug)]
-pub struct RegisterPlayerEvent {
-    pub event: ReducerEvent<Reducer>,
-    pub id: u64,
-}
-
-#[derive(Clone, Debug)]
-pub struct GsRegisterEvent {
-    pub event: ReducerEvent<Reducer>,
-    pub ip: String,
-    pub port: u16,
-}
-
 pub fn main() {
-    StdbPlugin::builder()
-        .with_name("asd")
-        .with_uri("dsa")
-        .with_run_fn(DbConnection::run_threaded);
     App::new()
         .add_plugins((MinimalPlugins, LogPlugin::default()))
-        // .add_plugins(W
-        //     StdbPlugin::default()
-        //         .with_connection(|send_connected, send_disconnected, send_connect_error, _| {
-        //             let conn = DbConnection::builder()
-        //                 .with_module_name("stellarwar")
-        //                 .with_uri("https://stdb.jlavocat.eu")
-        //                 .on_connect_error(move |_ctx, err| {
-        //                     send_connect_error
-        //                         .send(StdbConnectionErrorEvent { err })
-        //                         .unwrap();
-        //                 })
-        //                 .on_disconnect(move |_ctx, err| {
-        //                     send_disconnected
-        //                         .send(StdbDisconnectedEvent { err })
-        //                         .unwrap();
-        //                 })
-        //                 .on_connect(move |_ctx, id, token| {
-        //                     send_connected
-        //                         .send(StdbConnectedEvent {
-        //                             identity: id,
-        //                             access_token: token.to_string(),
-        //                         })
-        //                         .unwrap();
-        //                 })
-        //                 .build()
-        //                 .expect("SpacetimeDB connection failed");
-        //             conn.run_threaded();
-        //             conn
-        //         })
-        //         .with_events(|plugin, app, db, reducers| {
-        //             tables!(
-        //                 players,
-        //                 game_servers,
-        //                 (star_systems, no_update),
-        //                 (planets, no_update)
-        //             );
-        //             register_reducers!(
-        //                 on_player_register(ctx, id) => RegisterPlayerEvent {
-        //                     event: ctx.event.clone(),
-        //                     id: *id
-        //                 },
-        //                 on_gs_register(ctx, ip, port) => GsRegisterEvent {
-        //                     event: ctx.event.clone(),
-        //                     ip: ip.clone(),
-        //                     port: *port
-        //                 }
-        //             );
-        //         }),
-        // )
-        .add_systems(
-            Update,
-            (on_connected, on_register_player, on_gs_register, on_player),
+        .add_plugins(
+            StdbPlugin::default()
+                .with_uri("http://localhost:3000")
+                .with_module_name("chat")
+                .with_run_fn(DbConnection::run_threaded)
+                .add_table(RemoteTables::planets, TableEvents::all())
+                .add_table(RemoteTables::players, TableEvents::all())
+                .add_table(RemoteTables::game_servers, TableEvents::all())
+                .add_reducer::<GsRegister>()
+                .add_reducer::<GsSetReady>(),
         )
+        .add_systems(Update, on_connected)
+        .add_systems(Update, on_player_inserted)
+        .add_systems(Update, on_player_updated)
+        .add_systems(Update, on_player_deleted)
         .run();
 }
 
@@ -93,40 +39,49 @@ fn on_connected(
     mut events: EventReader<StdbConnectedEvent>,
     stdb: Res<StdbConnection<DbConnection>>,
 ) {
-    for ev in events.read() {
-        info!(
-            "Connected to SpacetimeDB with identity: {}",
-            ev.identity.to_hex()
-        );
+    for _ev in events.read() {
+        info!("Connected to SpacetimeDB");
 
-        // Call any reducers
-        stdb.reducers().player_register(1).unwrap();
+        stdb.subscription_builder()
+            .on_applied(|_| info!("Subscription to lobby applied"))
+            .on_error(|_, err| error!("Subscription to lobby failed for: {}", err))
+            .subscribe("SELECT * FROM lobby");
 
-        // Subscribe to any tables
-        stdb.subscribe()
-            .on_applied(|_| info!("Subscription to players applied"))
-            .on_error(|_, err| error!("Subscription to players failed for: {}", err))
-            .subscribe("SELECT * FROM players");
-
-        // Access your database cache (since it's not yet populated here this line might return 0)
-        info!("Players count: {}", stdb.db().players().count());
+        stdb.subscription_builder()
+            .on_applied(|_| info!("Subscription to user applied"))
+            .on_error(|_, err| error!("Subscription to user failed for: {}", err))
+            .subscribe("SELECT * FROM user");
     }
 }
 
-fn on_register_player(mut events: ReadReducerEvent<RegisterPlayerEvent>) {
+fn on_player_inserted(mut events: EventReader<InsertEvent<Player>>) {
     for event in events.read() {
-        info!("Registered player: {:?}", event);
-    }
-}
-
-fn on_gs_register(mut events: ReadReducerEvent<GsRegisterEvent>) {
-    for event in events.read() {
-        info!("Registered game server: {:?}", event);
-    }
-}
-
-fn on_player(mut events: ReadInsertEvent<Player>) {
-    for event in events.read() {
+        // Row below is just an example, does not actually compile.
+        // commands.spawn(Player { id: event.row.id });
         info!("Player inserted: {:?}", event.row);
     }
+}
+
+fn on_player_updated(mut events: EventReader<UpdateEvent<Player>>) {
+    for event in events.read() {
+        info!("Player updated: {:?} -> {:?}", event.old, event.new);
+    }
+}
+
+fn on_player_deleted(mut events: EventReader<DeleteEvent<Player>>) {
+    for event in events.read() {
+        info!("Player deleted: {:?}", event.row);
+    }
+}
+
+#[derive(Debug, RegisterReducerEvent)]
+pub struct GsRegister {
+    event: ReducerEvent<Reducer>,
+    ip: String,
+    port: u16,
+}
+
+#[derive(Debug, RegisterReducerEvent)]
+pub struct GsSetReady {
+    event: ReducerEvent<Reducer>,
 }

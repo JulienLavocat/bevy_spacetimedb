@@ -25,7 +25,7 @@ This plugin is compatible with Bevy 0.15.x and 0.16.x, the latest version of the
 
 | bevy_spacetimedb version | Bevy version |
 | ------------------------ | ------------ |
-| <= 0.3.x                 | 0.15.x       |
+| <= 0.3.x                 | 0.15.x       | 
 | >= 0.4.x                 | 0.16.x       |
 
 ## Usage
@@ -35,69 +35,17 @@ This plugin is compatible with Bevy 0.15.x and 0.16.x, the latest version of the
 
 ```rust
 App::new()
-    .add_plugins(
-        StdbPlugin::default()
-            // Required, this method is used to configure your SpacetimeDB connection
-            // you will also need to send the connected, disconnected and connect_error with_events back to the plugin
-            // Don't forget to call run_threaded() on your connection
-            .with_connection(|send_connected, send_disconnected, send_connect_error, _| {
-                let conn = DbConnection::builder()
-                    .with_module_name("<your module name>")
-                    .with_uri("<your spacetimedb instance uri>")
-                    .on_connect_error(move |_ctx, err| {
-                        send_connect_error
-                            .send(StdbConnectionErrorEvent { err })
-                            .unwrap();
-                    })
-                    .on_disconnect(move |_ctx, err| {
-                        send_disconnected
-                            .send(StdbDisconnectedEvent { err })
-                            .unwrap();
-                    })
-                    .on_connect(move |_ctx, _id, _c| {
-                        send_connected.send(StdbConnectedEvent {}).unwrap();
-                    })
-                    .build()
-                    .expect("SpacetimeDB connection failed");
-
-                // Do what you want with the connection here
-
-                // This is very important, otherwise your client will never connect and receive data
-                conn.run_threaded();
-                conn
-            })
-            /// Register the events you want to receive (example: players and enemies inserted, updated, deleted) and your reducers
-            .with_events(|plugin, app, db| {
-                tables!(
-                    players,
-                    enemies,
-                    (player_without_update, no_update),
-                );
-
-                register_reducers!(
-                    on_player_register(ctx, id) => RegisterPlayerEvent {
-                        event: ctx.event.clone(),
-                        id: *id
-                    },
-                    on_gs_register(ctx, ip, port) => GsRegisterEvent {
-                        event: ctx.event.clone(),
-                        ip: ip.clone(),
-                        port: *port
-                    }
-                );
-
-
-                let send_register_player = plugin.reducer_event::<RegisterPlayerEvent>(app);
-                reducers.on_register_player(move |ctx, reducer_arg_1, reducer_arg_2| {
-                    send_register_player
-                        .send(ReducerResultEvent::new(RegisterPlayerEvent {
-                            event: ctx.event.clone(),
-                            // You can add any data you want here, even reducer arguments
-                        }))
-                        .unwrap();
-                    });
-            }),
-    );
+        .add_plugins((MinimalPlugins, LogPlugin::default()))
+        .add_plugins(
+            StdbPlugin::default()
+                .with_uri("http://localhost:3000")
+                .with_module_name("chat")
+                .with_run_fn(DbConnection::run_threaded)
+                .add_table(RemoteTables::lobby, TableEvents::all())
+                .add_table(RemoteTables::user, TableEvents::all())
+                .add_reducer::<CreateLobby>()
+                .add_reducer::<SetName>(),
+        )
 ```
 
 2. Add a system handling connection events

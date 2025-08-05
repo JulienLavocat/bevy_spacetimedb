@@ -3,15 +3,15 @@ use spacetimedb_sdk::{ConnectionId, DbContext, Identity, Result};
 
 #[derive(Resource)]
 /// A connection to the SpacetimeDB server, as a Bevy resource.
-/// This struct is a wrapper around a concrete-typed `DbContext`.
-pub struct StdbConnection<T: DbContext> {
+/// This struct is a wrapper around a concrete-typed `DbContext` in your auto-generated.
+pub struct StdbConnection<T: DbContext + 'static> {
     /// The underlying connection.
-    conn: T,
+    conn: &'static T,
 }
 
 impl<T: DbContext> StdbConnection<T> {
     /// Create a new connection to the SpacetimeDB server.
-    pub fn new(conn: T) -> Self {
+    pub fn new(conn: &'static T) -> Self {
         Self { conn }
     }
 }
@@ -29,7 +29,7 @@ impl<T: DbContext> StdbConnection<T> {
 
     /// Get a builder-pattern constructor for subscribing to queries,
     /// causing matching rows to be replicated into the client cache.
-    pub fn subscribe(&self) -> T::SubscriptionBuilder {
+    pub fn subscription_builder(&self) -> T::SubscriptionBuilder {
         self.conn.subscription_builder()
     }
 

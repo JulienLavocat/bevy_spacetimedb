@@ -1,164 +1,84 @@
+use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{
-    Expr, Ident, Result, Token, parenthesized,
-    parse::{Parse, ParseStream},
-    parse_macro_input,
-    punctuated::Punctuated,
-};
+use syn::{Data, DeriveInput, Fields, Ident, parse_macro_input};
 
-#[derive(Debug)]
-struct TableEntry {
-    table: Ident,
-    has_update: bool,
-}
+/// This macro automatically generates the boilerplate code needed to register a reducer
+/// with the `StdbPlugin`.
+///
+/// ## Requirements
+///
+/// - The struct must have exactly one field named `event` of type `ReducerEvent<Reducer>`
+/// - All other fields must match the reducer's parameter types and order
+/// - Struct fields must be named (no tuple structs)
+///
+/// ## Example
+///
+///```no-run
+/// #[derive(RegisterReducerEvent)]
+/// pub struct SetName {
+///     pub event: ReducerEvent<Reducer>,
+///     pub name: String,
+/// }
+/// ```
+#[proc_macro_derive(RegisterReducerEvent)]
+pub fn register_reducer_event_derive(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let struct_name = &input.ident;
+    let struct_name_str = struct_name.to_string();
 
-impl Parse for TableEntry {
-    fn parse(input: ParseStream) -> Result<Self> {
-        // Identity with no flags
-        if input.peek(Ident) {
-            return Ok(TableEntry {
-                table: input.parse()?,
-                has_update: true,
-            });
-        }
+    // Derive callback name directly from struct name (no suffix stripping)
+    let function_name = Ident::new(
+        &format!("on_{}", struct_name_str.to_snake_case()),
+        struct_name.span(),
+    );
 
-        // Parse an identity with flags
-        let content;
-        parenthesized!(content in input);
+    // Extract named fields
+    let fields = match input.data {
+        Data::Struct(data_struct) => match data_struct.fields {
+            Fields::Named(fields_named) => fields_named.named,
+            _ => panic!("Struct must have named fields"),
+        },
+        _ => panic!("Only structs are supported"),
+    };
 
-        let table: Ident = content.parse()?;
+    // Separate 'event' field from reducer parameters
+    let mut event_field = None;
+    let mut param_fields = Vec::new();
+    let mut param_idents = Vec::new();
 
-        let no_update_flag = if content.peek(Token![,]) {
-            content.parse::<Token![,]>()?;
-            let flag: Ident = content.parse()?;
-            if flag != "no_update" {
-                return Err(syn::Error::new_spanned(flag, "Expected `no_update`"));
+    for field in fields {
+        let field_ident = field.ident.as_ref().expect("Field must have identifier");
+        if field_ident == "event" {
+            if event_field.is_some() {
+                panic!("Duplicate 'event' field");
             }
-            Some(flag)
+            event_field = Some(field);
         } else {
-            None
-        };
-
-        Ok(TableEntry {
-            table,
-            has_update: no_update_flag.is_none(),
-        })
+            param_idents.push(field_ident.clone());
+            param_fields.push(field);
+        }
     }
-}
 
-struct TablesInput {
-    entries: Vec<TableEntry>,
-}
+    if event_field.is_none() {
+        panic!("Struct must have an 'event' field");
+    }
 
-impl Parse for TablesInput {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let mut entries = Vec::new();
-        while !input.is_empty() {
-            entries.push(input.parse()?);
-            if input.peek(Token![,]) {
-                input.parse::<Token![,]>()?;
+    // Generate the implementation
+    let expanded = quote! {
+        impl bevy_spacetimedb::RegisterableReducerEvent<DbConnection, RemoteModule> for #struct_name {
+            fn set_stdb_callback(reducers: &RemoteReducers, sender: std::sync::mpsc::Sender<ReducerResultEvent<Self>>) {
+                reducers.#function_name(move |ctx, #(#param_idents),*| {
+                    sender
+                        .send(ReducerResultEvent::new(#struct_name {
+                            event: ctx.event.clone(),
+                            #(#param_idents: #param_idents.clone()),*
+                        }))
+                        .unwrap();
+                });
             }
         }
-        Ok(TablesInput { entries })
-    }
-}
+    };
 
-#[proc_macro]
-pub fn tables(input: TokenStream) -> TokenStream {
-    let TablesInput { entries } = parse_macro_input!(input as TablesInput);
-
-    let mut output = quote! {};
-
-    for entry in entries {
-        let table = &entry.table;
-        output.extend(quote! {
-            plugin.on_insert(app, db.#table());
-            plugin.on_delete(app, db.#table());
-        });
-
-        if entry.has_update {
-            output.extend(quote! {
-                plugin.on_update(app, db.#table());
-                plugin.on_insert_update(app, db.#table());
-            });
-        }
-    }
-
-    output.into()
-}
-
-struct ReducerEntry {
-    handler_name: Ident,
-    params: Punctuated<Ident, Token![,]>,
-    struct_expr: Expr,
-}
-
-impl Parse for ReducerEntry {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let handler_name: Ident = input.parse()?;
-        let content;
-        parenthesized!(content in input);
-        let params = Punctuated::<Ident, Token![,]>::parse_terminated(&content)?;
-
-        input.parse::<Token![=>]>()?;
-
-        let struct_expr: Expr = input.parse()?;
-
-        Ok(ReducerEntry {
-            handler_name,
-            params,
-            struct_expr,
-        })
-    }
-}
-
-struct ReducersInput {
-    entries: Vec<ReducerEntry>,
-}
-
-impl Parse for ReducersInput {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let mut entries = Vec::new();
-        while !input.is_empty() {
-            entries.push(input.parse()?);
-            if input.peek(Token![,]) {
-                input.parse::<Token![,]>()?;
-            }
-        }
-        Ok(Self { entries })
-    }
-}
-
-#[proc_macro]
-pub fn register_reducers(input: TokenStream) -> TokenStream {
-    let ReducersInput { entries } = parse_macro_input!(input as ReducersInput);
-
-    let mut output = quote! {};
-
-    for entry in entries {
-        let handler_name = &entry.handler_name;
-        let param_list = &entry.params;
-        let struct_expr = &entry.struct_expr;
-        let struct_name = if let Expr::Struct(s) = struct_expr {
-            &s.path.segments.last().unwrap().ident
-        } else {
-            panic!("Expected a struct expression");
-        };
-        let send_ident = Ident::new(
-            &format!("send_{}", struct_name.to_string().to_lowercase()),
-            struct_name.span(),
-        );
-
-        output.extend(quote! {
-        let #send_ident = plugin.reducer_event::<#struct_name>(app);
-        reducers.#handler_name(move |#param_list| {
-            #send_ident
-                .send(ReducerResultEvent::new(#struct_expr))
-                .unwrap();
-        });
-        });
-    }
-
-    output.into()
+    TokenStream::from(expanded)
 }

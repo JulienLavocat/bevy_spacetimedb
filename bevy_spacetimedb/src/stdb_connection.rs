@@ -65,6 +65,6 @@ impl<T: DbContext> StdbConnection<T> {
 
     /// Access to the underlying connection, it's not recommended to use this method directly.
     pub fn conn(&self) -> &T {
-        &self.conn
+        self.conn
     }
 }

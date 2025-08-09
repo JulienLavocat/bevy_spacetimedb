@@ -37,6 +37,14 @@ impl TableEvents {
             delete: true,
         }
     }
+
+    pub fn no_update() -> Self {
+        Self {
+            insert: true,
+            update: false,
+            delete: true,
+        }
+    }
 }
 
 impl<
@@ -44,8 +52,18 @@ impl<
     M: spacetime_codegen::SpacetimeModule<DbConnection = C>,
 > StdbPlugin<C, M>
 {
+    /// Registers a table for the bevy application with all events enabled.
+    pub fn add_table<TRow, TTable, F>(self, accessor: F) -> Self
+    where
+        TRow: Send + Sync + Clone + 'static,
+        TTable: Table<Row = TRow> + TableWithPrimaryKey<Row = TRow>,
+        F: 'static + Send + Sync + Fn(&'static C::DbView) -> TTable,
+    {
+        self.add_partial_table(accessor, TableEvents::all())
+    }
+
     ///Registers a table for the bevy application with the specified events in the `events` parameter.
-    pub fn add_table<TRow, TTable, F>(mut self, accessor: F, events: TableEvents) -> Self
+    pub fn add_partial_table<TRow, TTable, F>(mut self, accessor: F, events: TableEvents) -> Self
     where
         TRow: Send + Sync + Clone + 'static,
         TTable: Table<Row = TRow> + TableWithPrimaryKey<Row = TRow>,

@@ -6,7 +6,7 @@ use bevy::{
     app::{App, Plugin},
     platform::collections::HashMap,
 };
-use spacetimedb_sdk::{DbConnectionBuilder, DbContext};
+use spacetimedb_sdk::{Compression, DbConnectionBuilder, DbContext};
 use std::{
     any::{Any, TypeId},
     sync::{Mutex, mpsc::channel},
@@ -22,11 +22,16 @@ pub struct StdbPlugin<
     uri: Option<String>,
     token: Option<String>,
     run_fn: Option<fn(&C) -> JoinHandle<()>>,
+    compression: Option<Compression>,
+    light_mode: bool,
+
     // Stores Senders for registered table events.
     pub(crate) event_senders: Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
+    #[allow(clippy::type_complexity)]
     pub(crate) table_registers: Vec<
         Box<dyn Fn(&StdbPlugin<C, M>, &mut App, &'static <C as DbContext>::DbView) + Send + Sync>,
     >,
+    #[allow(clippy::type_complexity)]
     pub(crate) reducer_registers:
         Vec<Box<dyn Fn(&mut App, &<C as DbContext>::Reducers) + Send + Sync>>,
 }
@@ -39,9 +44,12 @@ impl<
     fn default() -> Self {
         Self {
             module_name: Default::default(),
-            uri: Default::default(),
-            token: Default::default(),
-            run_fn: Option::default(),
+            uri: None,
+            token: None,
+            run_fn: None,
+            compression: Some(Compression::default()),
+            light_mode: false,
+
             event_senders: Mutex::default(),
             table_registers: Vec::default(),
             reducer_registers: Vec::default(),
@@ -89,6 +97,30 @@ impl<
         self.token = Some(token.into());
         self
     }
+
+    /// Sets the compression used when a certain threshold in the message size has been reached.
+    ///
+    /// The current threshold used by the host is 1KiB for the entire server message
+    /// and for individual query updates.
+    /// Note however that this threshold is not guaranteed and may change without notice.
+    pub fn with_compression(mut self, compression: Compression) -> Self {
+        self.compression = Some(compression);
+        self
+    }
+
+    /// Sets whether the "light" mode is used.
+    ///
+    /// The light mode is meant for clients which are network-bandwidth constrained
+    /// and results in non-callers receiving only light incremental updates.
+    /// These updates will not include information about the reducer that caused them,
+    /// but will contain updates to subscribed-to tables.
+    /// As a consequence, when light-mode is enabled,
+    /// non-callers will not receive reducer callbacks,
+    /// but will receive callbacks for row insertion/deletion/updates.
+    pub fn with_light_mode(mut self, light_mode: bool) -> Self {
+        self.light_mode = light_mode;
+        self
+    }
 }
 
 impl<
@@ -116,6 +148,8 @@ impl<
             .with_module_name(self.module_name.clone().unwrap())
             .with_uri(self.uri.clone().unwrap())
             .with_token(self.token.clone())
+            .with_compression(self.compression.unwrap_or_default())
+            .with_light_mode(self.light_mode)
             .on_connect_error(move |_ctx, err| {
                 send_connect_error
                     .send(StdbConnectionErrorEvent { err })
@@ -150,7 +184,7 @@ impl<
         }
 
         let run_fn = self.run_fn.expect("No run function specified!");
-        run_fn(&conn);
+        run_fn(conn);
 
         app.insert_resource(StdbConnection::new(conn));
     }

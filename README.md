@@ -25,12 +25,12 @@ This plugin is compatible with Bevy 0.15.x and 0.16.x, the latest version of the
 
 | bevy_spacetimedb version | Bevy version |
 | ------------------------ | ------------ |
-| <= 0.3.x                 | 0.15.x       | 
+| <= 0.3.x                 | 0.15.x       |
 | >= 0.4.x                 | 0.16.x       |
 
 ## Usage
 
-0. Add to your crate: `cargo add bevy_spacetimedb`
+0. Add the plugin to your project: `cargo add bevy_spacetimedb`
 1. Add the plugin to your bevy application:
 
 ```rust
@@ -48,12 +48,12 @@ App::new()
         )
 ```
 
-2. Add a system handling connection events
+3. Add a system handling connection events
    You can also add systems for `StdbDisconnectedEvent` and `StdbConnectionErrorEvent`
 
 ```rust
 fn on_connected(
-    mut events: EventReader<StdbConnectedEvent>,
+    mut events: ReadStdbConnectedEvent,
     stdb: Res<StdbConnection<DbConnection>>,
 ) {
     for _ in events.read() {
@@ -76,26 +76,50 @@ fn on_connected(
 }
 ```
 
-3. Add any systems that you need in order to handle the table events you declared and do whatever you want:
+3. Add any systems that you need in order to handle the table events you
+   declared and do whatever you want:
 
 ```rust
-fn on_player_inserted(mut events: EventReader<InsertEvent<Player>>, mut commands: Commands) {
+fn on_player_inserted(mut events: ReadInsertEvent<Player>, mut commands: Commands) {
     for event in events.read() {
         commands.spawn(Player { id: event.row.id });
         info!("Player inserted: {:?} -> {:?}", event.row);
     }
 }
 
-fn on_player_updated(mut events: EventReader<UpdateEvent<Player>>) {
+fn on_player_updated(mut events: ReadUpdateEvent<Player>) {
     for event in events.read() {
         info!("Player updated: {:?} -> {:?}", event.old, event.new);
     }
 }
 
-fn on_player_deleted(mut events: EventReader<DeleteEvent<Player>>, q_players: Query<Entity, Player>) {
+fn on_player_insert_update(mut events: ReadInsertUpdateEvent<Player>, q_players: Query<Entity, Player>) {
     for event in events.read() {
         info!("Player deleted: {:?} -> {:?}", event.row);
         // Delete the player's entity
     }
+}
+
+fn on_player_deleted(mut events: ReadDeleteEvent<Player>, q_players: Query<Entity, Player>) {
+    for event in events.read() {
+        info!("Player deleted: {:?} -> {:?}", event.row);
+        // Delete the player's entity
+    }
+}
+```
+
+## Tips and tricks
+
+### Shorthand for `StdbConnection`
+
+You can use `Res<StdbConnection<DbConnection>>` to get the resource but this is
+quite verbose, you can create the following type alias for convenience:
+
+```rust
+pub type SpacetimeDB<'a> = Res<'a, StdbConnection<DbConnection>>;
+
+fn my_system(stdb: SpacetimeDB) {
+    // Use the `DbConnection` type alias
+    stdb.reducers().my_reducer("some argument").unwrap();
 }
 ```

@@ -15,7 +15,11 @@ This plugin will provide you with:
 
 - A resource `StdbConnection` to call your reducers, subscribe to tables, etc.
 - Connection lifecycle events: `StdbConnectedEvent`, `StdbDisconnectedEvent`, `StdbConnectionErrorEvent` as Bevy's `EventsReader`
-- All the tables events (row inserted/updated/deleted): `InsertEvent\<MyRow>`, `UpdateEvent\<MyRow>`, `DeleteEvent\<MyRow>` as `EventsReader`
+- All the tables events (row inserted/updated/deleted): `EventsReader`:
+  - `ReadInsertEvent<T>`
+  - `ReadUpdateEvent<T>`
+  - `ReadInsertUpdateEvent<T>`
+  - `ReadDeleteEvent<T>`
 
 Check the example app in `/example_app` for a complete example of how to use the plugin.
 

@@ -128,3 +128,12 @@ fn my_system(stdb: SpacetimeDB) {
     stdb.reducers().my_reducer("some argument").unwrap();
 }
 ```
+
+## Special thanks
+
+Special thanks to:
+
+- @abos-gergo for the improvements toward reducing the boilerplate needed to use
+  the plugin
+- @PappAdam for the improvements toward reducing the boilerplate needed to use
+  the plugin

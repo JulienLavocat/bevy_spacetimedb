@@ -1132,7 +1132,7 @@ dependencies = [
 
 [[package]]
 name = "bevy_spacetimedb"
-version = "0.6.1"
+version = "1.0.0"
 dependencies = [
  "bevy",
  "bevy_spacetimedb_macros",
@@ -1141,7 +1141,7 @@ dependencies = [
 
 [[package]]
 name = "bevy_spacetimedb_macros"
-version = "0.1.1"
+version = "1.0.0"
 dependencies = [
  "heck 0.5.0",
  "quote",

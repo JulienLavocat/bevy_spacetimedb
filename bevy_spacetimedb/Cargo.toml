@@ -10,7 +10,7 @@ license = "Apache-2.0"
 [dependencies]
 spacetimedb-sdk = { workspace = true }
 bevy = { workspace = true }
-bevy_spacetimedb_macros = { path = "../macros" }
+bevy_spacetimedb_macros = { version = "1.0.0" }
 
 [[example]]
 name = "bevy_spacetimedb"

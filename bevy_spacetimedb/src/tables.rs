@@ -47,13 +47,18 @@ impl TableEvents {
     }
 }
 
+/// Passed into [`StdbPlugin::add_table_without_pk`] to determine which table events to register.
+/// Specifically for tables with no Primary keys
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TableEventsWithoutPrimaryKey {
+    /// Same as [`TableEvents::insert`]
     pub insert: bool,
+    /// Same as [`TableEvents::delete`]
     pub delete: bool,
 }
 
 impl TableEventsWithoutPrimaryKey {
+    /// Register all available table events
     pub fn all() -> Self {
         Self {
             insert: true,

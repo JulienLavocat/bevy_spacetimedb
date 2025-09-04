@@ -3,5 +3,8 @@ resolver = "2"
 members = ["bevy_spacetimedb", "macros", "example_app"]
 
 [workspace.dependencies]
-bevy = { version = "0.16.1" }
+bevy = { version = "0.16", default-features = false, features = [
+  "std",
+  "bevy_log",
+] }
 spacetimedb-sdk = { version = "1.3.0" }

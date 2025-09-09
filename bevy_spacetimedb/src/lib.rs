@@ -18,3 +18,4 @@ pub use plugin::*;
 pub use reducers::RegisterableReducerEvent;
 pub use stdb_connection::*;
 pub use tables::TableEvents;
+pub use tables::TableEventsWithoutPrimaryKey;

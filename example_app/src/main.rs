@@ -2,7 +2,7 @@ use bevy::{log::LogPlugin, prelude::*};
 use bevy_spacetimedb::{
     ReadDeleteEvent, ReadInsertEvent, ReadInsertUpdateEvent, ReadReducerEvent,
     ReadStdbConnectedEvent, ReadUpdateEvent, ReducerResultEvent, RegisterReducerEvent,
-    StdbConnection, StdbPlugin, TableEvents,
+    StdbConnection, StdbPlugin, TableEvents, TableEventsWithoutPrimaryKey,
 };
 use spacetimedb_sdk::ReducerEvent;
 use stdb::{DbConnection, Reducer};
@@ -10,8 +10,7 @@ use stdb::{DbConnection, Reducer};
 use crate::stdb::gs_register_reducer::gs_register;
 use crate::stdb::gs_set_ready_reducer::gs_set_ready;
 use crate::stdb::{
-    GameServersTableAccess, PlanetsTableAccess, Player, PlayersTableAccess, RemoteModule,
-    RemoteReducers, RemoteTables,
+    GalaxySettingsTableAccess, GameServersTableAccess, PlanetsTableAccess, Player, PlayersTableAccess, RemoteModule, RemoteReducers, RemoteTables
 };
 mod stdb;
 
@@ -39,10 +38,12 @@ pub fn main() {
                 .with_uri("http://localhost:3000")
                 .with_module_name("chat")
                 .with_run_fn(DbConnection::run_threaded)
+                // Some tables
                 .add_table(RemoteTables::planets)
                 .add_table(RemoteTables::players)
                 .add_table(RemoteTables::game_servers)
-                .add_partial_table(RemoteTables::players, TableEvents::no_update()) // Some tables
+                .add_partial_table(RemoteTables::players, TableEvents::no_update())
+                .add_table_without_pk(RemoteTables::galaxy_settings, TableEventsWithoutPrimaryKey::all())
                 // do not have update events, especially those without primary keys.
                 .add_reducer::<GsRegister>()
                 .add_reducer::<GsSetReady>(),

@@ -3,7 +3,7 @@ name = "bevy_spacetimedb_macros"
 description = "Macros for bevy_spacetimedb"
 repository = "https://github.com/JulienLavocat/bevy_spacetimedb"
 readme = "../README.md"
-version = "1.0.0"
+version = "0.6.1"
 edition = "2024"
 license = "Apache-2.0"
 
@@ -12,5 +12,5 @@ proc-macro = true
 
 [dependencies]
 quote = "1.0.40"
-syn = "2.0.100"
+syn = "2.0.106"
 heck = "0.5.0"

@@ -3,14 +3,18 @@ name = "bevy_spacetimedb"
 description = "Use SpacetimeDB in your Bevy application"
 repository = "https://github.com/JulienLavocat/bevy_spacetimedb"
 readme = "../README.md"
-version = "1.0.0"
+version = "0.6.1"
 edition = "2024"
 license = "Apache-2.0"
+
+[features]
+default = ["macros"]
+macros = ["dep:bevy_spacetimedb_macros"]
 
 [dependencies]
 spacetimedb-sdk = { workspace = true }
 bevy = { workspace = true }
-bevy_spacetimedb_macros = { version = "1.0.0" }
+bevy_spacetimedb_macros = { path = "../macros", optional = true }
 
 [[example]]
 name = "bevy_spacetimedb"

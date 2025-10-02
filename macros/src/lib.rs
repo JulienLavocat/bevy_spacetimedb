@@ -1,7 +1,7 @@
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Fields, Ident};
+use syn::{Data, DeriveInput, Fields, Ident, parse_macro_input};
 
 /// This macro automatically generates the boilerplate code needed to register a reducer
 /// with the `StdbPlugin`.
@@ -15,14 +15,14 @@ use syn::{parse_macro_input, Data, DeriveInput, Fields, Ident};
 /// ## Example
 ///
 ///```no-run
-/// #[derive(RegisterReducerEvent)]
+/// #[derive(RegisterReducerMessage)]
 /// pub struct SetName {
 ///     pub event: ReducerEvent<Reducer>,
 ///     pub name: String,
 /// }
 /// ```
-#[proc_macro_derive(RegisterReducerEvent)]
-pub fn register_reducer_event_derive(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(RegisterReducerMessage)]
+pub fn register_reducer_message_derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let struct_name = &input.ident;
     let struct_name_str = struct_name.to_string();
@@ -66,11 +66,11 @@ pub fn register_reducer_event_derive(input: TokenStream) -> TokenStream {
 
     // Generate the implementation
     let expanded = quote! {
-        impl bevy_spacetimedb::RegisterableReducerEvent<DbConnection, RemoteModule> for #struct_name {
-            fn set_stdb_callback(reducers: &RemoteReducers, sender: std::sync::mpsc::Sender<ReducerResultEvent<Self>>) {
+        impl bevy_spacetimedb::RegisterableReducerMessage<DbConnection, RemoteModule> for #struct_name {
+            fn set_stdb_callback(reducers: &RemoteReducers, sender: std::sync::mpsc::Sender<bevy_spacetimedb::ReducerResultMessage<Self>>) {
                 reducers.#function_name(move |ctx, #(#param_idents),*| {
                     sender
-                        .send(ReducerResultEvent::new(#struct_name {
+                        .send(bevy_spacetimedb::ReducerResultMessage::new(#struct_name {
                             event: ctx.event.clone(),
                             #(#param_idents: #param_idents.clone()),*
                         }))

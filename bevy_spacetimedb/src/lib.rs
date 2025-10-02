@@ -4,7 +4,7 @@
 
 mod aliases;
 mod channel_receiver;
-mod events;
+mod messages;
 mod plugin;
 mod reducers;
 mod stdb_connection;
@@ -13,10 +13,14 @@ mod tables;
 pub use aliases::*;
 #[cfg(feature = "macros")]
 pub use bevy_spacetimedb_macros::*;
-pub use channel_receiver::AddEventChannelAppExtensions;
-pub use events::*;
+
+// Primary message-based API
+pub use channel_receiver::AddMessageChannelAppExtensions;
+pub use messages::{
+    DeleteMessage, InsertMessage, InsertUpdateMessage, ReducerResultMessage, StdbConnectedMessage,
+    StdbConnectionErrorMessage, StdbDisconnectedMessage, UpdateMessage,
+};
 pub use plugin::*;
-pub use reducers::RegisterableReducerEvent;
+pub use reducers::RegisterableReducerMessage;
 pub use stdb_connection::*;
-pub use tables::TableEvents;
-pub use tables::TableEventsWithoutPrimaryKey;
+pub use tables::TableMessages;

@@ -1,8 +1,8 @@
 use bevy::{log::LogPlugin, prelude::*};
 use bevy_spacetimedb::{
-    ReadDeleteEvent, ReadInsertEvent, ReadInsertUpdateEvent, ReadReducerEvent,
-    ReadStdbConnectedEvent, ReadUpdateEvent, ReducerResultEvent, RegisterReducerEvent,
-    StdbConnection, StdbPlugin, TableEvents, TableEventsWithoutPrimaryKey,
+    ReadDeleteMessage, ReadInsertMessage, ReadInsertUpdateMessage, ReadReducerMessage,
+    ReadStdbConnectedMessage, ReadUpdateMessage, RegisterReducerMessage, StdbConnection,
+    StdbPlugin, TableMessages,
 };
 use spacetimedb_sdk::ReducerEvent;
 use stdb::{DbConnection, Reducer};
@@ -14,7 +14,7 @@ use crate::stdb::{
 };
 mod stdb;
 
-#[derive(Debug, RegisterReducerEvent)]
+#[derive(Debug, RegisterReducerMessage)]
 #[allow(dead_code)]
 pub struct GsRegister {
     event: ReducerEvent<Reducer>,
@@ -22,7 +22,7 @@ pub struct GsRegister {
     port: u16,
 }
 
-#[derive(Debug, RegisterReducerEvent)]
+#[derive(Debug, RegisterReducerMessage)]
 #[allow(dead_code)]
 pub struct GsSetReady {
     event: ReducerEvent<Reducer>,
@@ -59,7 +59,7 @@ pub fn main() {
 }
 
 // SpacetimeDB is defined as an alias for the StdbConnection with DbConnection.
-fn on_connected(mut events: ReadStdbConnectedEvent, stdb: SpacetimeDB) {
+fn on_connected(mut events: ReadStdbConnectedMessage, stdb: SpacetimeDB) {
     for _ev in events.read() {
         info!("Connected to SpacetimeDB");
 
@@ -75,7 +75,7 @@ fn on_connected(mut events: ReadStdbConnectedEvent, stdb: SpacetimeDB) {
     }
 }
 
-fn on_player_inserted(mut events: ReadInsertEvent<Player>) {
+fn on_player_inserted(mut events: ReadInsertMessage<Player>) {
     for event in events.read() {
         // Row below is just an example, does not actually compile.
         // commands.spawn(Player { id: event.row.id });
@@ -83,19 +83,19 @@ fn on_player_inserted(mut events: ReadInsertEvent<Player>) {
     }
 }
 
-fn on_player_updated(mut events: ReadUpdateEvent<Player>) {
+fn on_player_updated(mut events: ReadUpdateMessage<Player>) {
     for event in events.read() {
         info!("Player updated: {:?} -> {:?}", event.old, event.new);
     }
 }
 
-fn on_player_deleted(mut events: ReadDeleteEvent<Player>) {
+fn on_player_deleted(mut events: ReadDeleteMessage<Player>) {
     for event in events.read() {
         info!("Player deleted: {:?}", event.row);
     }
 }
 
-fn on_player_inserted_updated(mut events: ReadInsertUpdateEvent<Player>) {
+fn on_player_inserted_updated(mut events: ReadInsertUpdateMessage<Player>) {
     for event in events.read() {
         info!(
             "Player insert/update event: old={:?}, new={:?}",
@@ -104,13 +104,13 @@ fn on_player_inserted_updated(mut events: ReadInsertUpdateEvent<Player>) {
     }
 }
 
-fn on_gs_register(mut events: ReadReducerEvent<GsRegister>) {
+fn on_gs_register(mut events: ReadReducerMessage<GsRegister>) {
     for event in events.read() {
         info!("Game server registered: {:?}", event.result);
     }
 }
 
-fn on_gs_set_ready(mut events: ReadReducerEvent<GsSetReady>) {
+fn on_gs_set_ready(mut events: ReadReducerMessage<GsSetReady>) {
     for event in events.read() {
         info!("Game server set ready: {:?}", event.result);
     }

@@ -30,8 +30,8 @@ This plugin is compatible with Bevy 0.15.x, 0.16.x, and 0.17.x; the latest versi
 | bevy_spacetimedb version | Bevy version |
 | ------------------------ | ------------ |
 | <= 0.3.x                 | 0.15.x       |
-| 0.4.x - 0.9.x            | 0.16.x       |
-| >= 1.0.x                 | 0.17.x       |
+| 0.4.x - 1.0.x            | 0.16.x       |
+| >= 1.1.x                 | 0.17.x       |
 
 ## Usage
 

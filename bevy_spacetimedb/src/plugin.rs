@@ -1,14 +1,12 @@
 use crate::{
-    AddEventChannelAppExtensions, StdbConnectedEvent, StdbConnection, StdbConnectionErrorEvent,
-    StdbDisconnectedEvent,
+    AddMessageChannelAppExtensions, StdbConnectedMessage, StdbConnection,
+    StdbConnectionErrorMessage, StdbDisconnectedMessage,
 };
-use bevy::{
-    app::{App, Plugin},
-    platform::collections::HashMap,
-};
+use bevy::app::{App, Plugin};
 use spacetimedb_sdk::{Compression, DbConnectionBuilder, DbContext};
 use std::{
     any::{Any, TypeId},
+    collections::HashMap,
     sync::{Mutex, mpsc::channel},
     thread::JoinHandle,
 };
@@ -136,12 +134,12 @@ impl<
             "No module name set for StdbPlugin. Set it with the with_module_name() function",
         );
 
-        let (send_connected, recv_connected) = channel::<StdbConnectedEvent>();
-        let (send_disconnected, recv_disconnected) = channel::<StdbDisconnectedEvent>();
-        let (send_connect_error, recv_connect_error) = channel::<StdbConnectionErrorEvent>();
-        app.add_event_channel::<StdbConnectionErrorEvent>(recv_connect_error)
-            .add_event_channel::<StdbConnectedEvent>(recv_connected)
-            .add_event_channel::<StdbDisconnectedEvent>(recv_disconnected);
+        let (send_connected, recv_connected) = channel::<StdbConnectedMessage>();
+        let (send_disconnected, recv_disconnected) = channel::<StdbDisconnectedMessage>();
+        let (send_connect_error, recv_connect_error) = channel::<StdbConnectionErrorMessage>();
+        app.add_message_channel::<StdbConnectionErrorMessage>(recv_connect_error)
+            .add_message_channel::<StdbConnectedMessage>(recv_connected)
+            .add_message_channel::<StdbDisconnectedMessage>(recv_disconnected);
 
         // FIXME App should not crash if intial connection fails.
         let conn = DbConnectionBuilder::<M>::new()
@@ -152,17 +150,17 @@ impl<
             .with_light_mode(self.light_mode)
             .on_connect_error(move |_ctx, err| {
                 send_connect_error
-                    .send(StdbConnectionErrorEvent { err })
+                    .send(StdbConnectionErrorMessage { err })
                     .unwrap();
             })
             .on_disconnect(move |_ctx, err| {
                 send_disconnected
-                    .send(StdbDisconnectedEvent { err })
+                    .send(StdbDisconnectedMessage { err })
                     .unwrap();
             })
             .on_connect(move |_ctx, id, token| {
                 send_connected
-                    .send(StdbConnectedEvent {
+                    .send(StdbConnectedMessage {
                         identity: id,
                         access_token: token.to_string(),
                     })

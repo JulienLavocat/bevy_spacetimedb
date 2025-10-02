@@ -36,29 +36,29 @@ pub use galaxy_settings_type::GalaxySettings;
 pub use game_server_type::GameServer;
 pub use game_servers_table::*;
 pub use generate_galaxy_reducer::{
-    generate_galaxy, set_flags_for_generate_galaxy, GenerateGalaxyCallbackId,
+    GenerateGalaxyCallbackId, generate_galaxy, set_flags_for_generate_galaxy,
 };
 pub use generate_points_reducer::{
-    generate_points, set_flags_for_generate_points, GeneratePointsCallbackId,
+    GeneratePointsCallbackId, generate_points, set_flags_for_generate_points,
 };
 pub use gs_player_connected_reducer::{
-    gs_player_connected, set_flags_for_gs_player_connected, GsPlayerConnectedCallbackId,
+    GsPlayerConnectedCallbackId, gs_player_connected, set_flags_for_gs_player_connected,
 };
 pub use gs_player_disconnected_reducer::{
-    gs_player_disconnected, set_flags_for_gs_player_disconnected, GsPlayerDisconnectedCallbackId,
+    GsPlayerDisconnectedCallbackId, gs_player_disconnected, set_flags_for_gs_player_disconnected,
 };
-pub use gs_register_reducer::{gs_register, set_flags_for_gs_register, GsRegisterCallbackId};
-pub use gs_set_ready_reducer::{gs_set_ready, set_flags_for_gs_set_ready, GsSetReadyCallbackId};
+pub use gs_register_reducer::{GsRegisterCallbackId, gs_register, set_flags_for_gs_register};
+pub use gs_set_ready_reducer::{GsSetReadyCallbackId, gs_set_ready, set_flags_for_gs_set_ready};
 pub use on_disconnected_reducer::{
-    on_disconnected, set_flags_for_on_disconnected, OnDisconnectedCallbackId,
+    OnDisconnectedCallbackId, on_disconnected, set_flags_for_on_disconnected,
 };
 pub use planet_type::Planet;
 pub use planets_table::*;
 pub use player_move_system_reducer::{
-    player_move_system, set_flags_for_player_move_system, PlayerMoveSystemCallbackId,
+    PlayerMoveSystemCallbackId, player_move_system, set_flags_for_player_move_system,
 };
 pub use player_register_reducer::{
-    player_register, set_flags_for_player_register, PlayerRegisterCallbackId,
+    PlayerRegisterCallbackId, player_register, set_flags_for_player_register,
 };
 pub use player_type::Player;
 pub use players_table::*;
@@ -401,6 +401,9 @@ impl __sdk::DbContext for DbConnection {
     fn try_identity(&self) -> Option<__sdk::Identity> {
         self.imp.try_identity()
     }
+    fn try_connection_id(&self) -> Option<__sdk::ConnectionId> {
+        self.imp.try_connection_id()
+    }
     fn connection_id(&self) -> __sdk::ConnectionId {
         self.imp.connection_id()
     }
@@ -532,21 +535,21 @@ impl __sdk::SubscriptionHandle for SubscriptionHandle {
 /// either a [`DbConnection`] or an [`EventContext`] and operate on either.
 pub trait RemoteDbContext:
     __sdk::DbContext<
-    DbView = RemoteTables,
-    Reducers = RemoteReducers,
-    SetReducerFlags = SetReducerFlags,
-    SubscriptionBuilder = __sdk::SubscriptionBuilder<RemoteModule>,
->
+        DbView = RemoteTables,
+        Reducers = RemoteReducers,
+        SetReducerFlags = SetReducerFlags,
+        SubscriptionBuilder = __sdk::SubscriptionBuilder<RemoteModule>,
+    >
 {
 }
 impl<
-        Ctx: __sdk::DbContext<
+    Ctx: __sdk::DbContext<
             DbView = RemoteTables,
             Reducers = RemoteReducers,
             SetReducerFlags = SetReducerFlags,
             SubscriptionBuilder = __sdk::SubscriptionBuilder<RemoteModule>,
         >,
-    > RemoteDbContext for Ctx
+> RemoteDbContext for Ctx
 {
 }
 
@@ -618,6 +621,9 @@ impl __sdk::DbContext for EventContext {
 
     fn try_identity(&self) -> Option<__sdk::Identity> {
         self.imp.try_identity()
+    }
+    fn try_connection_id(&self) -> Option<__sdk::ConnectionId> {
+        self.imp.try_connection_id()
     }
     fn connection_id(&self) -> __sdk::ConnectionId {
         self.imp.connection_id()
@@ -695,6 +701,9 @@ impl __sdk::DbContext for ReducerEventContext {
     fn try_identity(&self) -> Option<__sdk::Identity> {
         self.imp.try_identity()
     }
+    fn try_connection_id(&self) -> Option<__sdk::ConnectionId> {
+        self.imp.try_connection_id()
+    }
     fn connection_id(&self) -> __sdk::ConnectionId {
         self.imp.connection_id()
     }
@@ -766,6 +775,9 @@ impl __sdk::DbContext for SubscriptionEventContext {
 
     fn try_identity(&self) -> Option<__sdk::Identity> {
         self.imp.try_identity()
+    }
+    fn try_connection_id(&self) -> Option<__sdk::ConnectionId> {
+        self.imp.try_connection_id()
     }
     fn connection_id(&self) -> __sdk::ConnectionId {
         self.imp.connection_id()
@@ -842,6 +854,9 @@ impl __sdk::DbContext for ErrorContext {
 
     fn try_identity(&self) -> Option<__sdk::Identity> {
         self.imp.try_identity()
+    }
+    fn try_connection_id(&self) -> Option<__sdk::ConnectionId> {
+        self.imp.try_connection_id()
     }
     fn connection_id(&self) -> __sdk::ConnectionId {
         self.imp.connection_id()

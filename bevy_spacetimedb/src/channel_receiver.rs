@@ -36,7 +36,7 @@ fn channel_to_message<T: 'static + Send + Sync + Message>(
 ) {
     // this should be the only system working with the receiver,
     // thus we always expect to get this lock
-    let events = receiver.lock().expect("unable to acquire mutex lock");
+    let messages = receiver.lock().expect("unable to acquire mutex lock");
 
-    writer.write_batch(events.try_iter());
+    writer.write_batch(messages.try_iter());
 }

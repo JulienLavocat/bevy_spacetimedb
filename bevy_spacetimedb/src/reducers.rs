@@ -23,7 +23,7 @@ impl<
     pub fn add_reducer<E: RegisterableReducerMessage<C, M> + Send + Sync + 'static>(
         mut self,
     ) -> Self {
-        // This callback manages the registration of the event.
+        // This callback manages the registration of the message.
         let register_fn = move |app: &mut App, reducers: &C::Reducers| {
             let (send, recv) = channel::<ReducerResultMessage<E>>();
             app.add_message_channel(recv);

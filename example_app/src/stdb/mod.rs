@@ -74,7 +74,7 @@ pub use subjects_table::*;
 
 /// One of the reducers defined by this module.
 ///
-/// Contained within a [`__sdk::ReducerEvent`] in [`EventContext`]s for reducer events
+/// Contained within a [`__sdk::ReducerEvent`] in [`EventContext`]s for reducer messages
 /// to indicate which reducer caused the event.
 
 pub enum Reducer {

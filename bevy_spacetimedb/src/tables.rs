@@ -93,7 +93,7 @@ impl<
         TTable: Table<Row = TRow> + TableWithPrimaryKey<Row = TRow>,
         F: 'static + Send + Sync + Fn(&'static C::DbView) -> TTable,
     {
-        // A closure that sets up events for the table
+        // A closure that sets up messages for the table
         let register = move |plugin: &Self, app: &mut App, db: &'static C::DbView| {
             let table = accessor(db);
             if messages.insert {
@@ -116,38 +116,14 @@ impl<
         self
     }
 
-    ///Registers a table without a private key for the bevy application with the specified events in the `events` parameter.
-    pub fn add_table_without_pk<TRow, TTable, F>(mut self, accessor: F, events: TableEventsWithoutPrimaryKey) -> Self
-    where
-        TRow: Send + Sync + Clone + 'static,
-        TTable: Table<Row = TRow>,
-        F: 'static + Send + Sync + Fn(&'static C::DbView) -> TTable,
-    {
-        // A closure that sets up events for the table
-        let register = move |plugin: &Self, app: &mut App, db: &'static C::DbView| {
-            let table = accessor(db);
-            if events.insert {
-                plugin.on_insert(app, &table);
-            }
-            if events.delete {
-                plugin.on_delete(app, &table);
-            }
-        };
-
-        // Store this table, and later when the plugin is built, call them on .
-        self.table_registers.push(Box::new(register));
-
-        self
-    }
-
-    /// Register a Bevy event of type InsertEvent<TRow> for the `on_insert` event on the provided table.
+    /// Register a Bevy message of type InsertMessage<TRow> for the `on_insert` message on the provided table.
     fn on_insert<TRow>(&self, app: &mut App, table: &impl Table<Row = TRow>) -> &Self
     where
         TRow: Send + Sync + Clone + 'static,
     {
         let type_id = TypeId::of::<InsertMessage<TRow>>();
 
-        let mut map = self.event_senders.lock().unwrap();
+        let mut map = self.message_senders.lock().unwrap();
 
         let sender = map
             .entry(type_id)
@@ -161,21 +137,21 @@ impl<
             .clone();
 
         table.on_insert(move |_ctx, row| {
-            let event = InsertMessage { row: row.clone() };
-            let _ = sender.send(event);
+            let message = InsertMessage { row: row.clone() };
+            let _ = sender.send(message);
         });
 
         self
     }
 
-    /// Register a Bevy event of type DeleteEvent<TRow> for the `on_delete` event on the provided table.
+    /// Register a Bevy message of type DeleteMessage<TRow> for the `on_delete` message on the provided table.
     fn on_delete<TRow>(&self, app: &mut App, table: &impl Table<Row = TRow>) -> &Self
     where
         TRow: Send + Sync + Clone + 'static,
     {
         let type_id = TypeId::of::<DeleteMessage<TRow>>();
 
-        let mut map = self.event_senders.lock().unwrap();
+        let mut map = self.message_senders.lock().unwrap();
         let sender = map
             .entry(type_id)
             .or_insert_with(|| {
@@ -188,14 +164,14 @@ impl<
             .clone();
 
         table.on_delete(move |_ctx, row| {
-            let event = DeleteMessage { row: row.clone() };
-            let _ = sender.send(event);
+            let message = DeleteMessage { row: row.clone() };
+            let _ = sender.send(message);
         });
 
         self
     }
 
-    /// Register a Bevy event of type UpdateEvent<TRow> for the `on_update` event on the provided table.
+    /// Register a Bevy message of type UpdateMessage<TRow> for the `on_update` message on the provided table.
     fn on_update<TRow, TTable>(&self, app: &mut App, table: &TTable) -> &Self
     where
         TRow: Send + Sync + Clone + 'static,
@@ -203,7 +179,7 @@ impl<
     {
         let type_id = TypeId::of::<UpdateMessage<TRow>>();
 
-        let mut map = self.event_senders.lock().unwrap();
+        let mut map = self.message_senders.lock().unwrap();
         let sender = map
             .entry(type_id)
             .or_insert_with(|| {
@@ -216,17 +192,17 @@ impl<
             .clone();
 
         table.on_update(move |_ctx, old, new| {
-            let event = UpdateMessage {
+            let message = UpdateMessage {
                 old: old.clone(),
                 new: new.clone(),
             };
-            let _ = sender.send(event);
+            let _ = sender.send(message);
         });
 
         self
     }
 
-    /// Register a Bevy event of type InsertUpdateEvent<TRow> for the `on_insert` and `on_update` events on the provided table.
+    /// Register a Bevy message of type InsertUpdateMessage<TRow> for the `on_insert` and `on_update` messages on the provided table.
     fn on_insert_update<TRow, TTable>(&self, app: &mut App, table: &TTable) -> &Self
     where
         TRow: Send + Sync + Clone + 'static,
@@ -234,7 +210,7 @@ impl<
     {
         let type_id = TypeId::of::<InsertUpdateMessage<TRow>>();
 
-        let mut map = self.event_senders.lock().unwrap();
+        let mut map = self.message_senders.lock().unwrap();
         let send = map
             .entry(type_id)
             .or_insert_with(|| {
@@ -248,19 +224,19 @@ impl<
 
         let send_update = send.clone();
         table.on_update(move |_ctx, old, new| {
-            let event = InsertUpdateMessage {
+            let message = InsertUpdateMessage {
                 old: Some(old.clone()),
                 new: new.clone(),
             };
-            let _ = send_update.send(event);
+            let _ = send_update.send(message);
         });
 
         table.on_insert(move |_ctx, row| {
-            let event = InsertUpdateMessage {
+            let message = InsertUpdateMessage {
                 old: None,
                 new: row.clone(),
             };
-            let _ = send.send(event);
+            let _ = send.send(message);
         });
 
         self

@@ -23,8 +23,8 @@ pub struct StdbPlugin<
     compression: Option<Compression>,
     light_mode: bool,
 
-    // Stores Senders for registered table events.
-    pub(crate) event_senders: Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
+    // Stores Senders for registered table messages.
+    pub(crate) message_senders: Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
     #[allow(clippy::type_complexity)]
     pub(crate) table_registers: Vec<
         Box<dyn Fn(&StdbPlugin<C, M>, &mut App, &'static <C as DbContext>::DbView) + Send + Sync>,
@@ -48,7 +48,7 @@ impl<
             compression: Some(Compression::default()),
             light_mode: false,
 
-            event_senders: Mutex::default(),
+            message_senders: Mutex::default(),
             table_registers: Vec::default(),
             reducer_registers: Vec::default(),
         }

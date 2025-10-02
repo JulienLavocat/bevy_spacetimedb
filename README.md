@@ -60,10 +60,10 @@ App::new()
 
 ```rust
 fn on_connected(
-    mut events: ReadStdbConnectedMessage,
+    mut messages: ReadStdbConnectedMessage,
     stdb: Res<StdbConnection<DbConnection>>,
 ) {
-    for _ in events.read() {
+    for _ in messages.read() {
         info!("Connected to SpacetimeDB");
 
         // Call any reducers
@@ -87,29 +87,29 @@ fn on_connected(
    declared and do whatever you want:
 
 ```rust
-fn on_player_inserted(mut events: ReadInsertMessage<Player>, mut commands: Commands) {
-    for event in events.read() {
-        commands.spawn(Player { id: event.row.id });
-        info!("Player inserted: {:?} -> {:?}", event.row);
+fn on_player_inserted(mut messages: ReadInsertMessage<Player>, mut commands: Commands) {
+    for message in messages.read() {
+        commands.spawn(Player { id: message.row.id });
+        info!("Player inserted: {:?} -> {:?}", message.row);
     }
 }
 
-fn on_player_updated(mut events: ReadUpdateMessage<Player>) {
-    for event in events.read() {
-        info!("Player updated: {:?} -> {:?}", event.old, event.new);
+fn on_player_updated(mut messages: ReadUpdateMessage<Player>) {
+    for message in messages.read() {
+        info!("Player updated: {:?} -> {:?}", message.old, message.new);
     }
 }
 
-fn on_player_insert_update(mut events: ReadInsertUpdateMessage<Player>, q_players: Query<Entity, Player>) {
-    for event in events.read() {
-        info!("Player deleted: {:?} -> {:?}", event.row);
+fn on_player_insert_update(mut messages: ReadInsertUpdateMessage<Player>, q_players: Query<Entity, Player>) {
+    for message in messages.read() {
+        info!("Player deleted: {:?} -> {:?}", message.row);
         // Delete the player's entity
     }
 }
 
-fn on_player_deleted(mut events: ReadDeleteMessage<Player>, q_players: Query<Entity, Player>) {
-    for event in events.read() {
-        info!("Player deleted: {:?} -> {:?}", event.row);
+fn on_player_deleted(mut messages: ReadDeleteMessage<Player>, q_players: Query<Entity, Player>) {
+    for message in messages.read() {
+        info!("Player deleted: {:?} -> {:?}", message.row);
         // Delete the player's entity
     }
 }

@@ -760,7 +760,7 @@ dependencies = [
 
 [[package]]
 name = "bevy_spacetimedb"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bevy",
  "bevy_spacetimedb_macros",
@@ -769,7 +769,7 @@ dependencies = [
 
 [[package]]
 name = "bevy_spacetimedb_macros"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "heck 0.5.0",
  "quote",

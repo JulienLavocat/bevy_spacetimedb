@@ -1,6 +1,6 @@
 use crate::{
-    AddEventChannelAppExtensions, StdbConnectedEvent, StdbConnection, StdbConnectionErrorEvent,
-    StdbDisconnectedEvent,
+    AddMessageChannelAppExtensions, StdbConnectedMessage, StdbConnection,
+    StdbConnectionErrorMessage, StdbDisconnectedMessage,
 };
 use bevy::{
     app::{App, Plugin},
@@ -25,8 +25,8 @@ pub struct StdbPlugin<
     compression: Option<Compression>,
     light_mode: bool,
 
-    // Stores Senders for registered table events.
-    pub(crate) event_senders: Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
+    // Stores Senders for registered table messages.
+    pub(crate) message_senders: Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
     #[allow(clippy::type_complexity)]
     pub(crate) table_registers: Vec<
         Box<dyn Fn(&StdbPlugin<C, M>, &mut App, &'static <C as DbContext>::DbView) + Send + Sync>,
@@ -50,7 +50,7 @@ impl<
             compression: Some(Compression::default()),
             light_mode: false,
 
-            event_senders: Mutex::default(),
+            message_senders: Mutex::default(),
             table_registers: Vec::default(),
             reducer_registers: Vec::default(),
         }
@@ -136,12 +136,12 @@ impl<
             "No module name set for StdbPlugin. Set it with the with_module_name() function",
         );
 
-        let (send_connected, recv_connected) = channel::<StdbConnectedEvent>();
-        let (send_disconnected, recv_disconnected) = channel::<StdbDisconnectedEvent>();
-        let (send_connect_error, recv_connect_error) = channel::<StdbConnectionErrorEvent>();
-        app.add_event_channel::<StdbConnectionErrorEvent>(recv_connect_error)
-            .add_event_channel::<StdbConnectedEvent>(recv_connected)
-            .add_event_channel::<StdbDisconnectedEvent>(recv_disconnected);
+        let (send_connected, recv_connected) = channel::<StdbConnectedMessage>();
+        let (send_disconnected, recv_disconnected) = channel::<StdbDisconnectedMessage>();
+        let (send_connect_error, recv_connect_error) = channel::<StdbConnectionErrorMessage>();
+        app.add_message_channel::<StdbConnectionErrorMessage>(recv_connect_error)
+            .add_message_channel::<StdbConnectedMessage>(recv_connected)
+            .add_message_channel::<StdbDisconnectedMessage>(recv_disconnected);
 
         // FIXME App should not crash if intial connection fails.
         let conn = DbConnectionBuilder::<M>::new()
@@ -152,17 +152,17 @@ impl<
             .with_light_mode(self.light_mode)
             .on_connect_error(move |_ctx, err| {
                 send_connect_error
-                    .send(StdbConnectionErrorEvent { err })
+                    .send(StdbConnectionErrorMessage { err })
                     .unwrap();
             })
             .on_disconnect(move |_ctx, err| {
                 send_disconnected
-                    .send(StdbDisconnectedEvent { err })
+                    .send(StdbDisconnectedMessage { err })
                     .unwrap();
             })
             .on_connect(move |_ctx, id, token| {
                 send_connected
-                    .send(StdbConnectedEvent {
+                    .send(StdbConnectedMessage {
                         identity: id,
                         access_token: token.to_string(),
                     })

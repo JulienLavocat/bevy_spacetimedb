@@ -1,8 +1,8 @@
 use bevy::{log::LogPlugin, prelude::*};
 use bevy_spacetimedb::{
-    ReadDeleteEvent, ReadInsertEvent, ReadInsertUpdateEvent, ReadReducerEvent,
-    ReadStdbConnectedEvent, ReadUpdateEvent, ReducerResultEvent, RegisterReducerEvent,
-    StdbConnection, StdbPlugin, TableEvents,
+    ReadDeleteMessage, ReadInsertMessage, ReadInsertUpdateMessage, ReadReducerMessage,
+    ReadStdbConnectedMessage, ReadUpdateMessage, RegisterReducerMessage, StdbConnection,
+    StdbPlugin, TableMessages,
 };
 use spacetimedb_sdk::ReducerEvent;
 use stdb::{DbConnection, Reducer};
@@ -15,7 +15,7 @@ use crate::stdb::{
 };
 mod stdb;
 
-#[derive(Debug, RegisterReducerEvent)]
+#[derive(Debug, RegisterReducerMessage)]
 #[allow(dead_code)]
 pub struct GsRegister {
     event: ReducerEvent<Reducer>,
@@ -23,7 +23,7 @@ pub struct GsRegister {
     port: u16,
 }
 
-#[derive(Debug, RegisterReducerEvent)]
+#[derive(Debug, RegisterReducerMessage)]
 #[allow(dead_code)]
 pub struct GsSetReady {
     event: ReducerEvent<Reducer>,
@@ -42,8 +42,8 @@ pub fn main() {
                 .add_table(RemoteTables::planets)
                 .add_table(RemoteTables::players)
                 .add_table(RemoteTables::game_servers)
-                .add_partial_table(RemoteTables::players, TableEvents::no_update()) // Some tables
-                // do not have update events, especially those without primary keys.
+                .add_partial_table(RemoteTables::players, TableMessages::no_update()) // Some tables
+                // do not have update messages, especially those without primary keys.
                 .add_reducer::<GsRegister>()
                 .add_reducer::<GsSetReady>(),
         )
@@ -58,8 +58,8 @@ pub fn main() {
 }
 
 // SpacetimeDB is defined as an alias for the StdbConnection with DbConnection.
-fn on_connected(mut events: ReadStdbConnectedEvent, stdb: SpacetimeDB) {
-    for _ev in events.read() {
+fn on_connected(mut messages: ReadStdbConnectedMessage, stdb: SpacetimeDB) {
+    for _ev in messages.read() {
         info!("Connected to SpacetimeDB");
 
         stdb.subscription_builder()
@@ -74,43 +74,43 @@ fn on_connected(mut events: ReadStdbConnectedEvent, stdb: SpacetimeDB) {
     }
 }
 
-fn on_player_inserted(mut events: ReadInsertEvent<Player>) {
-    for event in events.read() {
+fn on_player_inserted(mut messages: ReadInsertMessage<Player>) {
+    for message in messages.read() {
         // Row below is just an example, does not actually compile.
-        // commands.spawn(Player { id: event.row.id });
-        info!("Player inserted: {:?}", event.row);
+        // commands.spawn(Player { id: message.row.id });
+        info!("Player inserted: {:?}", message.row);
     }
 }
 
-fn on_player_updated(mut events: ReadUpdateEvent<Player>) {
-    for event in events.read() {
-        info!("Player updated: {:?} -> {:?}", event.old, event.new);
+fn on_player_updated(mut messages: ReadUpdateMessage<Player>) {
+    for message in messages.read() {
+        info!("Player updated: {:?} -> {:?}", message.old, message.new);
     }
 }
 
-fn on_player_deleted(mut events: ReadDeleteEvent<Player>) {
-    for event in events.read() {
-        info!("Player deleted: {:?}", event.row);
+fn on_player_deleted(mut messages: ReadDeleteMessage<Player>) {
+    for message in messages.read() {
+        info!("Player deleted: {:?}", message.row);
     }
 }
 
-fn on_player_inserted_updated(mut events: ReadInsertUpdateEvent<Player>) {
-    for event in events.read() {
+fn on_player_inserted_updated(mut messages: ReadInsertUpdateMessage<Player>) {
+    for message in messages.read() {
         info!(
-            "Player insert/update event: old={:?}, new={:?}",
-            event.old, event.new
+            "Player insert/update message: old={:?}, new={:?}",
+            message.old, message.new
         );
     }
 }
 
-fn on_gs_register(mut events: ReadReducerEvent<GsRegister>) {
-    for event in events.read() {
-        info!("Game server registered: {:?}", event.result);
+fn on_gs_register(mut messages: ReadReducerMessage<GsRegister>) {
+    for message in messages.read() {
+        info!("Game server registered: {:?}", message.result);
     }
 }
 
-fn on_gs_set_ready(mut events: ReadReducerEvent<GsSetReady>) {
-    for event in events.read() {
-        info!("Game server set ready: {:?}", event.result);
+fn on_gs_set_ready(mut messages: ReadReducerMessage<GsSetReady>) {
+    for message in messages.read() {
+        info!("Game server set ready: {:?}", message.result);
     }
 }

@@ -2,11 +2,13 @@ use crate::{
     AddMessageChannelAppExtensions, StdbConnectedMessage, StdbConnection,
     StdbConnectionErrorMessage, StdbDisconnectedMessage,
 };
-use bevy::app::{App, Plugin};
+use bevy::{
+    app::{App, Plugin},
+    platform::collections::HashMap,
+};
 use spacetimedb_sdk::{Compression, DbConnectionBuilder, DbContext};
 use std::{
     any::{Any, TypeId},
-    collections::HashMap,
     sync::{Mutex, mpsc::channel},
     thread::JoinHandle,
 };

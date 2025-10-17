@@ -1,7 +1,7 @@
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, Ident, parse_macro_input};
+use syn::{parse_macro_input, Data, DeriveInput, Fields, Ident};
 
 /// This macro automatically generates the boilerplate code needed to register a reducer
 /// with the `StdbPlugin`.

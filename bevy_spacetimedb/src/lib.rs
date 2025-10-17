@@ -11,6 +11,7 @@ mod stdb_connection;
 mod tables;
 
 pub use aliases::*;
+#[cfg(feature = "macros")]
 pub use bevy_spacetimedb_macros::*;
 pub use channel_receiver::AddEventChannelAppExtensions;
 pub use events::*;

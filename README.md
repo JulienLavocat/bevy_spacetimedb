@@ -1,139 +1,204 @@
 <div align="center">
 
-# bevy_spacetimedb
+# bevy_spacetimedb_wasm
 
-Use [SpacetimeDB](https://spacetimedb.com) in your Bevy application.
+**WASM-only SpacetimeDB integration for Bevy using the TypeScript SDK bridge**
 
-[![crates.io](https://img.shields.io/crates/v/bevy_spacetimedb)](https://crates.io/crates/bevy_spacetimedb)
-[![docs.rs](https://docs.rs/bevy_spacetimedb/badge.svg)](https://docs.rs/bevy_spacetimedb)
+A fork of [bevy_spacetimedb](https://github.com/JulienLavocat/bevy_spacetimedb) that enables browser deployment by bridging to the SpacetimeDB TypeScript SDK.
 
 </div>
 
-## Highlights
+## ⚠️ Important: WASM-Only
 
-This plugin will provide you with:
+This crate **only works with `wasm32-unknown-unknown` target**. For native builds, use the original [bevy_spacetimedb](https://github.com/JulienLavocat/bevy_spacetimedb) crate.
 
-- A resource `StdbConnection` to call your reducers, subscribe to tables, etc.
-- Connection lifecycle events: `StdbConnectedEvent`, `StdbDisconnectedEvent`, `StdbConnectionErrorEvent` as Bevy's `EventsReader`
-- All the tables events (row inserted/updated/deleted): `EventsReader`:
-  - `ReadInsertEvent<T>`
-  - `ReadUpdateEvent<T>`
-  - `ReadInsertUpdateEvent<T>`
-  - `ReadDeleteEvent<T>`
 
-Check the example app in `/example_app` for a complete example of how to use the plugin.
 
-## Bevy versions
+## 🚀 Features
 
-This plugin is compatible with Bevy 0.15.x and 0.16.x, the latest version of the plugin is compatible with Bevy 0.16.x.
+- **API Compatible**: Maintains similar API to `bevy_spacetimedb` for easy migration
+- **Table Events**: Subscribe to insert/update/delete events via Bevy's event system
+- **Connection Lifecycle**: Handle connect/disconnect/error events
+- **Reducer Calls**: Fire-and-forget reducer invocation
+- **TypeScript Bridge**: Leverages the official SpacetimeDB TypeScript SDK
 
-| bevy_spacetimedb version | Bevy version |
-| ------------------------ | ------------ |
-| <= 0.3.x                 | 0.15.x       |
-| >= 0.4.x                 | 0.16.x       |
+## 📦 Quick Start
 
-## Usage
+### 1. Add Dependencies
 
-0. Add the plugin to your project: `cargo add bevy_spacetimedb`
-1. Add the plugin to your bevy application:
+```toml
+[dependencies]
+bevy = "0.16"
+bevy_spacetimedb_wasm = { path = "bevy_spacetimedb" }  # or version when published
+serde = { version = "1.0", features = ["derive"] }
+```
+
+### 2. Define Tables & Reducers
 
 ```rust
-App::new()
-        .add_plugins((MinimalPlugins, LogPlugin::default()))
+use bevy_spacetimedb_wasm::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Player {
+    pub id: u64,
+    pub name: String,
+    pub x: f32,
+    pub y: f32,
+}
+
+impl TableRow for Player {
+    const TABLE_NAME: &'static str = "players";
+}
+
+define_reducer!(SpawnPlayer(name: String, x: f32, y: f32));
+define_reducer!(MovePlayer(id: u64, x: f32, y: f32));
+```
+
+### 3. Add the Plugin
+
+```rust
+use bevy::prelude::*;
+use bevy_spacetimedb_wasm::*;
+
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins)
         .add_plugins(
             StdbPlugin::default()
-                .with_uri("http://localhost:3000")
-                .with_module_name("chat")
-                .with_run_fn(DbConnection::run_threaded)
-                .add_table(RemoteTables::lobby)
-                .add_table(RemoteTables::user)
-                .add_partial_table(RemoteTables::player, TableEvents::no_update())
-                .add_reducer::<CreateLobby>()
-                .add_reducer::<SetName>(),
+                .with_uri("ws://localhost:3000")
+                .with_module_name("my_game")
+                .add_table::<Player>()
         )
+        .add_systems(Update, handle_players)
+        .run();
+}
 ```
 
-3. Add a system handling connection events
-   You can also add systems for `StdbDisconnectedEvent` and `StdbConnectionErrorEvent`
+### 4. Handle Events
 
 ```rust
-fn on_connected(
-    mut events: ReadStdbConnectedEvent,
-    stdb: Res<StdbConnection<DbConnection>>,
-) {
-    for _ in events.read() {
-        info!("Connected to SpacetimeDB");
-
-        // Call any reducers
-        stdb.reducers()
-            .my_super_reducer("A suuuuppeeeeer argument for a suuuuppeeeeer reducer")
-            .unwrap();
-
-        // Subscribe to any tables
-        stdb.subscribe()
-            .on_applied(|_| info!("Subscription to players applied"))
-            .on_error(|_, err| error!("Subscription to players failed for: {}", err))
-            .subscribe("SELECT * FROM players");
-
-        // Access your database cache (since it's not yet populated here this line might return 0)
-        info!("Players count: {}", stdb.db().players().count());
+fn handle_players(mut events: EventReader<InsertEvent<Player>>) {
+    for event in events.read() {
+        info!("New player: {:?}", event.row);
     }
 }
 ```
 
-3. Add any systems that you need in order to handle the table events you
-   declared and do whatever you want:
+### 5. Call Reducers
 
 ```rust
-fn on_player_inserted(mut events: ReadInsertEvent<Player>, mut commands: Commands) {
-    for event in events.read() {
-        commands.spawn(Player { id: event.row.id });
-        info!("Player inserted: {:?} -> {:?}", event.row);
-    }
-}
-
-fn on_player_updated(mut events: ReadUpdateEvent<Player>) {
-    for event in events.read() {
-        info!("Player updated: {:?} -> {:?}", event.old, event.new);
-    }
-}
-
-fn on_player_insert_update(mut events: ReadInsertUpdateEvent<Player>, q_players: Query<Entity, Player>) {
-    for event in events.read() {
-        info!("Player deleted: {:?} -> {:?}", event.row);
-        // Delete the player's entity
-    }
-}
-
-fn on_player_deleted(mut events: ReadDeleteEvent<Player>, q_players: Query<Entity, Player>) {
-    for event in events.read() {
-        info!("Player deleted: {:?} -> {:?}", event.row);
-        // Delete the player's entity
-    }
+fn spawn_player(stdb: Res<StdbConnection>) {
+    stdb.reducers()
+        .call::<SpawnPlayer>(("Alice".to_string(), 0.0, 0.0))
+        .expect("Failed to serialize args");
 }
 ```
 
-## Tips and tricks
+### 6. Build for WASM
 
-### Shorthand for `StdbConnection`
+```bash
+# Build the TypeScript bridge
+cd bevy_spacetimedb/js
+npm install && npm run build
 
-You can use `Res<StdbConnection<DbConnection>>` to get the resource but this is
-quite verbose, you can create the following type alias for convenience:
+# Build your game
+wasm-pack build --target web --out-dir www/pkg
+```
+
+### 7. Create HTML Page
+
+```html
+<!DOCTYPE html>
+<html>
+<body>
+    <script type="module">
+        // IMPORTANT: Load bridge BEFORE WASM!
+        import { SpacetimeDBBridge } from './bevy_spacetimedb/js/dist/spacetimedb-bridge.js';
+        window.__SPACETIMEDB_BRIDGE__ = new SpacetimeDBBridge();
+
+        // Then load your WASM
+        import init from './pkg/my_game.js';
+        await init();
+    </script>
+</body>
+</html>
+```
+
+## 📚 API Reference
+
+### Table Events
 
 ```rust
-pub type SpacetimeDB<'a> = Res<'a, StdbConnection<DbConnection>>;
+// Subscribe to all events
+.add_table::<Player>()
 
-fn my_system(stdb: SpacetimeDB) {
-    // Use the `DbConnection` type alias
-    stdb.reducers().my_reducer("some argument").unwrap();
-}
+// Subscribe to specific events
+.add_partial_table::<Message>(TableEvents::no_update())
+.add_partial_table::<Stats>(TableEvents::insert_only())
 ```
 
-## Special thanks
+Event types:
+- `InsertEvent<T>` - Row inserted
+- `UpdateEvent<T>` - Row updated (has `old` and `new`)
+- `DeleteEvent<T>` - Row deleted
+- `InsertUpdateEvent<T>` - Combined insert or update
+
+### Connection Events
+
+```rust
+fn on_connected(mut events: EventReader<StdbConnectedEvent>) { /* ... */ }
+fn on_disconnected(mut events: EventReader<StdbDisconnectedEvent>) { /* ... */ }
+fn on_error(mut events: EventReader<StdbConnectionErrorEvent>) { /* ... */ }
+```
+
+### Calling Reducers
+
+```rust
+stdb.reducers().call::<MyReducer>((arg1, arg2, arg3))?;
+```
+
+## 🔧 Architecture
+
+```
+Bevy App (WASM) → bevy_spacetimedb_wasm → wasm-bindgen
+    → JS Bridge → TypeScript SDK → WebSocket → SpacetimeDB Server
+```
+
+## ⚠️ Differences from bevy_spacetimedb
+
+### Compatible
+- ✅ Plugin configuration (`.with_uri()`, `.with_module_name()`)
+- ✅ Table registration (`.add_table()`, `.add_partial_table()`)
+- ✅ Table events (`InsertEvent`, `UpdateEvent`, `DeleteEvent`)
+- ✅ Connection events
+- ✅ Reducer calling
+
+### Not Available
+- ❌ `.with_run_fn()` - automatic
+- ❌ `.with_compression()` - handled by TS SDK
+- ❌ `.with_light_mode()` - handled by TS SDK
+- ❌ `stdb.db()` - client cache access (use events instead)
+- ❌ `stdb.subscribe()` - SQL subscriptions (use `.add_table()`)
+- ❌ Reducer callback events
+
+## 📄 License
+
+Apache-2.0 (same as original bevy_spacetimedb)
+
+## 🙏 Acknowledgments
+
+This is a fork of [bevy_spacetimedb](https://github.com/JulienLavocat/bevy_spacetimedb) by Julien Lavocat, adapted for WASM using the SpacetimeDB TypeScript SDK.
 
 Special thanks to:
+- **Julien Lavocat** for the original bevy_spacetimedb implementation
+- **@abos-gergo** and **@PappAdam** for improvements to the original plugin
+- **The SpacetimeDB team** for the TypeScript SDK
+- **The Bevy community**
 
-- @abos-gergo for the improvements toward reducing the boilerplate needed to use
-  the plugin
-- @PappAdam for the improvements toward reducing the boilerplate needed to use
-  the plugin
+## 🔗 Links
+
+- [Original bevy_spacetimedb](https://github.com/JulienLavocat/bevy_spacetimedb)
+- [SpacetimeDB](https://spacetimedb.com/)
+- [SpacetimeDB TypeScript SDK](https://www.npmjs.com/package/@clockworklabs/spacetimedb-sdk)
+- [Bevy Game Engine](https://bevyengine.org/)

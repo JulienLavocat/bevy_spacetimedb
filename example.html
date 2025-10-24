@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bevy SpacetimeDB WASM Example</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #1a1a1a;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        #loading {
+            color: #ffffff;
+            text-align: center;
+        }
+
+        #loading h1 {
+            margin: 0 0 1rem 0;
+        }
+
+        canvas {
+            background-color: #000000;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <h1>Loading...</h1>
+        <p>Initializing Bevy + SpacetimeDB</p>
+    </div>
+
+    <!--
+        IMPORTANT: The SpacetimeDB bridge MUST be loaded BEFORE the WASM module.
+        This script sets up the global __SPACETIMEDB_BRIDGE__ object that the Rust code expects.
+    -->
+    <script type="module">
+        // Step 1: Import and initialize the SpacetimeDB TypeScript SDK bridge
+        import { SpacetimeDBBridge } from './bevy_spacetimedb/js/dist/spacetimedb-bridge.js';
+
+        console.log('[HTML] Initializing SpacetimeDB bridge...');
+        window.__SPACETIMEDB_BRIDGE__ = new SpacetimeDBBridge();
+        console.log('[HTML] SpacetimeDB bridge initialized');
+
+        // Step 2: Now that the bridge is ready, load the WASM module
+        // Replace 'my_game' with your actual package name
+        console.log('[HTML] Loading WASM module...');
+        import init from './pkg/my_game.js';
+
+        try {
+            await init();
+            console.log('[HTML] WASM module initialized');
+
+            // Hide the loading screen
+            document.getElementById('loading').style.display = 'none';
+        } catch (error) {
+            console.error('[HTML] Failed to initialize WASM module:', error);
+            document.getElementById('loading').innerHTML = `
+                <h1>Error</h1>
+                <p>Failed to load the game: ${error.message}</p>
+                <p>Check the console for more details.</p>
+            `;
+        }
+    </script>
+</body>
+</html>

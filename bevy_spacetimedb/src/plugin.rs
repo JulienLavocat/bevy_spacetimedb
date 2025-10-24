@@ -1,191 +1,204 @@
 use crate::{
-    AddEventChannelAppExtensions, StdbConnectedEvent, StdbConnection, StdbConnectionErrorEvent,
-    StdbDisconnectedEvent,
+    bridge::get_bridge, AddEventChannelAppExtensions, StdbConnectedEvent,
+    StdbConnectionErrorEvent, StdbDisconnectedEvent, StdbConnection,
+    tables::TableConfig,
 };
-use bevy::{
-    app::{App, Plugin},
-    platform::collections::HashMap,
-};
-use spacetimedb_sdk::{Compression, DbConnectionBuilder, DbContext};
-use std::{
-    any::{Any, TypeId},
-    sync::{Mutex, mpsc::channel},
-    thread::JoinHandle,
-};
+use bevy::{app::{App, Plugin}, prelude::PreUpdate};
+use wasm_bindgen::prelude::*;
 
-/// The plugin for connecting SpacetimeDB with your bevy application.
-pub struct StdbPlugin<
-    C: spacetimedb_sdk::__codegen::DbConnection<Module = M> + DbContext,
-    M: spacetimedb_sdk::__codegen::SpacetimeModule<DbConnection = C>,
-> {
-    module_name: Option<String>,
+/// The main plugin for connecting SpacetimeDB to your Bevy application
+///
+/// This plugin handles:
+/// - Initializing the connection to SpacetimeDB via the TypeScript SDK bridge
+/// - Setting up table event subscriptions
+/// - Providing connection lifecycle events
+///
+/// # Example
+/// ```ignore
+/// use bevy::prelude::*;
+/// use bevy_spacetimedb_wasm::*;
+///
+/// fn main() {
+///     App::new()
+///         .add_plugins(DefaultPlugins)
+///         .add_plugins(
+///             StdbPlugin::default()
+///                 .with_uri("ws://localhost:3000")
+///                 .with_module_name("my_game")
+///                 .add_table::<Player>()
+///                 .add_table::<Lobby>()
+///         )
+///         .add_systems(Update, handle_players)
+///         .run();
+/// }
+///
+/// fn handle_players(mut events: EventReader<InsertEvent<Player>>) {
+///     for event in events.read() {
+///         println!("New player: {:?}", event.row);
+///     }
+/// }
+/// ```
+pub struct StdbPlugin {
+    /// The WebSocket URI of the SpacetimeDB server
     uri: Option<String>,
-    token: Option<String>,
-    run_fn: Option<fn(&C) -> JoinHandle<()>>,
-    compression: Option<Compression>,
-    light_mode: bool,
-
-    // Stores Senders for registered table events.
-    pub(crate) event_senders: Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
-    #[allow(clippy::type_complexity)]
-    pub(crate) table_registers: Vec<
-        Box<dyn Fn(&StdbPlugin<C, M>, &mut App, &'static <C as DbContext>::DbView) + Send + Sync>,
-    >,
-    #[allow(clippy::type_complexity)]
-    pub(crate) reducer_registers:
-        Vec<Box<dyn Fn(&mut App, &<C as DbContext>::Reducers) + Send + Sync>>,
+    /// The name of the SpacetimeDB module
+    module_name: Option<String>,
+    /// Optional authentication token
+    auth_token: Option<String>,
+    /// Table configurations
+    pub(crate) table_configs: Vec<TableConfig>,
 }
 
-impl<
-    C: spacetimedb_sdk::__codegen::DbConnection<Module = M> + DbContext,
-    M: spacetimedb_sdk::__codegen::SpacetimeModule<DbConnection = C>,
-> Default for StdbPlugin<C, M>
-{
+impl Default for StdbPlugin {
     fn default() -> Self {
         Self {
-            module_name: Default::default(),
             uri: None,
-            token: None,
-            run_fn: None,
-            compression: Some(Compression::default()),
-            light_mode: false,
-
-            event_senders: Mutex::default(),
-            table_registers: Vec::default(),
-            reducer_registers: Vec::default(),
+            module_name: None,
+            auth_token: None,
+            table_configs: Vec::new(),
         }
     }
 }
 
-impl<
-    C: spacetimedb_sdk::__codegen::DbConnection<Module = M> + DbContext + Send + Sync,
-    M: spacetimedb_sdk::__codegen::SpacetimeModule<DbConnection = C>,
-> StdbPlugin<C, M>
-{
-    /// The function that the connection will run with. The recommended function is `DbConnection::run_threaded`.
+impl StdbPlugin {
+    /// Set the URI of the SpacetimeDB host
     ///
-    /// Other function are not tested, they may not work.
-    pub fn with_run_fn(mut self, run_fn: fn(&C) -> JoinHandle<()>) -> Self {
-        self.run_fn = Some(run_fn);
-        self
-    }
-
-    /// Set the name or identity of the remote module.
-    pub fn with_module_name(mut self, name: impl Into<String>) -> Self {
-        self.module_name = Some(name.into());
-        self
-    }
-
-    /// Set the URI of the SpacetimeDB host which is running the remote module.
+    /// The URI should be a WebSocket URL, e.g., `"ws://localhost:3000"` or
+    /// `"wss://myserver.com"`.
     ///
-    /// The URI must have either no scheme or one of the schemes `http`, `https`, `ws` or `wss`.
+    /// # Example
+    /// ```ignore
+    /// StdbPlugin::default()
+    ///     .with_uri("ws://localhost:3000")
+    /// ```
     pub fn with_uri(mut self, uri: impl Into<String>) -> Self {
         self.uri = Some(uri.into());
         self
     }
 
-    /// Supply a token with which to authenticate with the remote database.
+    /// Set the name of the SpacetimeDB module
     ///
-    /// `token` should be an OpenID Connect compliant JSON Web Token.
+    /// This should match the module name defined in your SpacetimeDB server.
     ///
-    /// If this method is not invoked, or `None` is supplied,
-    /// the SpacetimeDB host will generate a new anonymous `Identity`.
-    ///
-    /// If the passed token is invalid or rejected by the host,
-    /// the connection will fail asynchrnonously.
-    pub fn with_token(mut self, token: impl Into<String>) -> Self {
-        self.token = Some(token.into());
+    /// # Example
+    /// ```ignore
+    /// StdbPlugin::default()
+    ///     .with_module_name("my_game")
+    /// ```
+    pub fn with_module_name(mut self, name: impl Into<String>) -> Self {
+        self.module_name = Some(name.into());
         self
     }
 
-    /// Sets the compression used when a certain threshold in the message size has been reached.
+    /// Supply an authentication token
     ///
-    /// The current threshold used by the host is 1KiB for the entire server message
-    /// and for individual query updates.
-    /// Note however that this threshold is not guaranteed and may change without notice.
-    pub fn with_compression(mut self, compression: Compression) -> Self {
-        self.compression = Some(compression);
-        self
-    }
-
-    /// Sets whether the "light" mode is used.
+    /// The token should be an OpenID Connect compliant JSON Web Token.
+    /// If not provided, the server will generate a new anonymous identity.
     ///
-    /// The light mode is meant for clients which are network-bandwidth constrained
-    /// and results in non-callers receiving only light incremental updates.
-    /// These updates will not include information about the reducer that caused them,
-    /// but will contain updates to subscribed-to tables.
-    /// As a consequence, when light-mode is enabled,
-    /// non-callers will not receive reducer callbacks,
-    /// but will receive callbacks for row insertion/deletion/updates.
-    pub fn with_light_mode(mut self, light_mode: bool) -> Self {
-        self.light_mode = light_mode;
+    /// # Example
+    /// ```ignore
+    /// StdbPlugin::default()
+    ///     .with_auth_token("eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9...")
+    /// ```
+    pub fn with_auth_token(mut self, token: impl Into<String>) -> Self {
+        self.auth_token = Some(token.into());
         self
     }
 }
 
-impl<
-    C: spacetimedb_sdk::__codegen::DbConnection<Module = M> + DbContext + Sync,
-    M: spacetimedb_sdk::__codegen::SpacetimeModule<DbConnection = C>,
-> Plugin for StdbPlugin<C, M>
-{
+impl Plugin for StdbPlugin {
     fn build(&self, app: &mut App) {
-        self.uri
-            .clone()
-            .expect("No uri set for StdbPlugin. Set it with the with_uri() function");
-        self.module_name.clone().expect(
-            "No module name set for StdbPlugin. Set it with the with_module_name() function",
+        // Validate configuration
+        let uri = self
+            .uri
+            .as_ref()
+            .expect("No URI set for StdbPlugin. Set it with .with_uri()");
+        let module_name = self
+            .module_name
+            .as_ref()
+            .expect("No module name set for StdbPlugin. Set it with .with_module_name()");
+
+        // Get the JavaScript bridge
+        let bridge = get_bridge();
+
+        // Create the connection
+        let connection_id = bridge.create_connection(uri, module_name, self.auth_token.clone());
+
+        web_sys::console::log_1(
+            &format!(
+                "Created SpacetimeDB connection {} to {}/{}",
+                connection_id, uri, module_name
+            )
+            .into(),
         );
 
-        let (send_connected, recv_connected) = channel::<StdbConnectedEvent>();
-        let (send_disconnected, recv_disconnected) = channel::<StdbDisconnectedEvent>();
-        let (send_connect_error, recv_connect_error) = channel::<StdbConnectionErrorEvent>();
-        app.add_event_channel::<StdbConnectionErrorEvent>(recv_connect_error)
-            .add_event_channel::<StdbConnectedEvent>(recv_connected)
-            .add_event_channel::<StdbDisconnectedEvent>(recv_disconnected);
+        // Setup connection lifecycle event channels
+        let (connected_send, connected_recv) = std::sync::mpsc::channel::<StdbConnectedEvent>();
+        let (disconnected_send, disconnected_recv) =
+            std::sync::mpsc::channel::<StdbDisconnectedEvent>();
+        let (error_send, error_recv) = std::sync::mpsc::channel::<StdbConnectionErrorEvent>();
 
-        // FIXME App should not crash if intial connection fails.
-        let conn = DbConnectionBuilder::<M>::new()
-            .with_module_name(self.module_name.clone().unwrap())
-            .with_uri(self.uri.clone().unwrap())
-            .with_token(self.token.clone())
-            .with_compression(self.compression.unwrap_or_default())
-            .with_light_mode(self.light_mode)
-            .on_connect_error(move |_ctx, err| {
-                send_connect_error
-                    .send(StdbConnectionErrorEvent { err })
-                    .unwrap();
-            })
-            .on_disconnect(move |_ctx, err| {
-                send_disconnected
-                    .send(StdbDisconnectedEvent { err })
-                    .unwrap();
-            })
-            .on_connect(move |_ctx, id, token| {
-                send_connected
-                    .send(StdbConnectedEvent {
-                        identity: id,
-                        access_token: token.to_string(),
-                    })
-                    .unwrap();
-            })
-            .build()
-            .expect("Failed to build connection");
+        app.add_event_channel(connected_recv)
+            .add_event_channel(disconnected_recv)
+            .add_event_channel(error_recv);
 
-        // A 'static ref is needed for the connection the register tables and reducers
-        // This is fine because only a small and fixed amount of memory will be leaked
-        // Because conn has to live until the end of the program anyways, not using it would not make for any performance improvements.
-        let conn = Box::<C>::leak(Box::new(conn));
+        // Register connection lifecycle callbacks
+        let connected_cb = Closure::wrap(Box::new(move || {
+            let _ = connected_send.send(StdbConnectedEvent {});
+        }) as Box<dyn Fn()>);
 
-        for table_register in self.table_registers.iter() {
-            table_register(self, app, conn.db());
-        }
-        for reducer_register in self.reducer_registers.iter() {
-            reducer_register(app, conn.reducers());
+        let disconnected_cb = Closure::wrap(Box::new(move |err: JsValue| {
+            let err_msg = err.as_string();
+            let _ = disconnected_send.send(StdbDisconnectedEvent { err: err_msg });
+        }) as Box<dyn Fn(JsValue)>);
+
+        let error_cb = Closure::wrap(Box::new(move |err: JsValue| {
+            let err_msg = err.as_string().unwrap_or_else(|| "Unknown error".to_string());
+            let _ = error_send.send(StdbConnectionErrorEvent { err: err_msg });
+        }) as Box<dyn Fn(JsValue)>);
+
+        // Register the callbacks with the bridge
+        let connected_id = bridge.register_callback(connected_cb.as_ref().unchecked_ref());
+        let disconnected_id = bridge.register_callback(disconnected_cb.as_ref().unchecked_ref());
+        let error_id = bridge.register_callback(error_cb.as_ref().unchecked_ref());
+
+        bridge.on_connect(connection_id, connected_id);
+        bridge.on_disconnect(connection_id, disconnected_id);
+        bridge.on_connection_error(connection_id, error_id);
+
+        // Keep the closures alive for the lifetime of the application
+        connected_cb.forget();
+        disconnected_cb.forget();
+        error_cb.forget();
+
+        // Setup table subscriptions
+        for table_config in &self.table_configs {
+            (table_config.setup_fn)(&bridge, connection_id, &table_config.events, app);
         }
 
-        let run_fn = self.run_fn.expect("No run function specified!");
-        run_fn(conn);
+        // Create and insert the connection resource
+        let connection = StdbConnection::new(bridge.clone(), connection_id);
+        app.insert_resource(connection);
 
-        app.insert_resource(StdbConnection::new(conn));
+        // Connect to the server asynchronously
+        wasm_bindgen_futures::spawn_local(async move {
+            web_sys::console::log_1(
+                &format!("Connecting to SpacetimeDB connection {}...", connection_id).into(),
+            );
+
+            match wasm_bindgen_futures::JsFuture::from(bridge.connect(connection_id)).await {
+                Ok(_) => {
+                    web_sys::console::log_1(
+                        &format!("Successfully connected to SpacetimeDB (connection {})", connection_id)
+                            .into(),
+                    );
+                }
+                Err(e) => {
+                    web_sys::console::error_1(
+                        &format!("Failed to connect to SpacetimeDB: {:?}", e).into(),
+                    );
+                }
+            }
+        });
     }
 }

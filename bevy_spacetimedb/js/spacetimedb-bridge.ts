@@ -17,15 +17,35 @@
  * ```
  */
 
-import { DbConnection } from '@clockworklabs/spacetimedb-sdk';
+import { DbConnection, ReducerEvent } from '@clockworklabs/spacetimedb-sdk';
 
+/** Callback function type for Rust WASM */
+type WasmCallback = (...args: any[]) => void;
+
+/** Data structure for table events passed to Rust */
+interface TableEventData {
+    row?: any;
+    oldRow?: any;
+    newRow?: any;
+    reducerEvent: {
+        callerIdentity: string;
+        reducerName: string;
+        args: any[];
+    } | null;
+}
+
+/**
+ * Bridge class that connects Rust WASM to the SpacetimeDB TypeScript SDK
+ */
 export class SpacetimeDBBridge {
+    private connections: Map<number, DbConnection>;
+    private nextConnectionId: number;
+    private callbacks: Map<number, WasmCallback>;
+    private nextCallbackId: number;
+
     constructor() {
-        /** @type {Map<number, DbConnection>} */
         this.connections = new Map();
         this.nextConnectionId = 0;
-
-        /** @type {Map<number, Function>} */
         this.callbacks = new Map();
         this.nextCallbackId = 0;
 
@@ -34,13 +54,9 @@ export class SpacetimeDBBridge {
 
     /**
      * Create a new connection to SpacetimeDB
-     * @param {string} uri - WebSocket URI (e.g., "ws://localhost:3000")
-     * @param {string} moduleName - Name of the SpacetimeDB module
-     * @param {string|null} authToken - Optional authentication token
-     * @returns {number} Connection ID
      */
-    createConnection(uri, moduleName, authToken) {
-        const conn = new DbConnection(uri, moduleName, authToken);
+    createConnection(uri: string, moduleName: string, authToken: string | null): number {
+        const conn = new DbConnection(uri, moduleName, authToken || undefined);
         const id = this.nextConnectionId++;
         this.connections.set(id, conn);
         console.log(`[SpacetimeDB Bridge] Created connection ${id} to ${uri}/${moduleName}`);
@@ -49,12 +65,12 @@ export class SpacetimeDBBridge {
 
     /**
      * Connect to the SpacetimeDB server
-     * @param {number} connectionId - Connection ID
-     * @returns {Promise<void>}
      */
-    async connect(connectionId) {
+    async connect(connectionId: number): Promise<void> {
         const conn = this.connections.get(connectionId);
-        if (!conn) throw new Error(`Invalid connection ID: ${connectionId}`);
+        if (!conn) {
+            throw new Error(`Invalid connection ID: ${connectionId}`);
+        }
         console.log(`[SpacetimeDB Bridge] Connecting ${connectionId}...`);
         await conn.connect();
         console.log(`[SpacetimeDB Bridge] Connected ${connectionId}`);
@@ -62,12 +78,12 @@ export class SpacetimeDBBridge {
 
     /**
      * Disconnect from the SpacetimeDB server
-     * @param {number} connectionId - Connection ID
-     * @returns {Promise<void>}
      */
-    async disconnect(connectionId) {
+    async disconnect(connectionId: number): Promise<void> {
         const conn = this.connections.get(connectionId);
-        if (!conn) throw new Error(`Invalid connection ID: ${connectionId}`);
+        if (!conn) {
+            throw new Error(`Invalid connection ID: ${connectionId}`);
+        }
         console.log(`[SpacetimeDB Bridge] Disconnecting ${connectionId}...`);
         await conn.disconnect();
         this.connections.delete(connectionId);
@@ -76,10 +92,8 @@ export class SpacetimeDBBridge {
 
     /**
      * Register a callback for connection events
-     * @param {number} connectionId - Connection ID
-     * @param {number} callbackId - Callback ID
      */
-    onConnect(connectionId, callbackId) {
+    onConnect(connectionId: number, callbackId: number): void {
         const conn = this.connections.get(connectionId);
         const callback = this.callbacks.get(callbackId);
         if (!conn || !callback) {
@@ -95,10 +109,8 @@ export class SpacetimeDBBridge {
 
     /**
      * Register a callback for disconnection events
-     * @param {number} connectionId - Connection ID
-     * @param {number} callbackId - Callback ID
      */
-    onDisconnect(connectionId, callbackId) {
+    onDisconnect(connectionId: number, callbackId: number): void {
         const conn = this.connections.get(connectionId);
         const callback = this.callbacks.get(callbackId);
         if (!conn || !callback) {
@@ -106,7 +118,7 @@ export class SpacetimeDBBridge {
             return;
         }
 
-        conn.onDisconnect((err) => {
+        conn.onDisconnect((err?: Error) => {
             console.log(`[SpacetimeDB Bridge] Connection ${connectionId} disconnected event`, err);
             callback(err?.message || null);
         });
@@ -114,10 +126,8 @@ export class SpacetimeDBBridge {
 
     /**
      * Register a callback for connection error events
-     * @param {number} connectionId - Connection ID
-     * @param {number} callbackId - Callback ID
      */
-    onConnectionError(connectionId, callbackId) {
+    onConnectionError(connectionId: number, callbackId: number): void {
         const conn = this.connections.get(connectionId);
         const callback = this.callbacks.get(callbackId);
         if (!conn || !callback) {
@@ -125,7 +135,7 @@ export class SpacetimeDBBridge {
             return;
         }
 
-        conn.onConnectionError((err) => {
+        conn.onConnectionError((err: Error) => {
             console.error(`[SpacetimeDB Bridge] Connection ${connectionId} error:`, err);
             callback(err?.message || 'Unknown error');
         });
@@ -133,14 +143,12 @@ export class SpacetimeDBBridge {
 
     /**
      * Call a reducer on the SpacetimeDB server
-     * @param {number} connectionId - Connection ID
-     * @param {string} reducerName - Name of the reducer
-     * @param {any} args - Reducer arguments (will be spread)
-     * @returns {Promise<void>}
      */
-    async callReducer(connectionId, reducerName, args) {
+    async callReducer(connectionId: number, reducerName: string, args: any): Promise<void> {
         const conn = this.connections.get(connectionId);
-        if (!conn) throw new Error(`Invalid connection ID: ${connectionId}`);
+        if (!conn) {
+            throw new Error(`Invalid connection ID: ${connectionId}`);
+        }
 
         console.log(`[SpacetimeDB Bridge] Calling reducer ${reducerName} on connection ${connectionId}`, args);
 
@@ -151,13 +159,12 @@ export class SpacetimeDBBridge {
 
     /**
      * Subscribe to a SQL query
-     * @param {number} connectionId - Connection ID
-     * @param {string} query - SQL query string
-     * @returns {Promise<void>}
      */
-    async subscribe(connectionId, query) {
+    async subscribe(connectionId: number, query: string): Promise<void> {
         const conn = this.connections.get(connectionId);
-        if (!conn) throw new Error(`Invalid connection ID: ${connectionId}`);
+        if (!conn) {
+            throw new Error(`Invalid connection ID: ${connectionId}`);
+        }
 
         console.log(`[SpacetimeDB Bridge] Subscribing to query on connection ${connectionId}:`, query);
         await conn.subscribe([query]);
@@ -165,17 +172,20 @@ export class SpacetimeDBBridge {
 
     /**
      * Subscribe to table events
-     * @param {number} connectionId - Connection ID
-     * @param {string} tableName - Table name
-     * @param {number|null} onInsertId - Insert callback ID (null to skip)
-     * @param {number|null} onUpdateId - Update callback ID (null to skip)
-     * @param {number|null} onDeleteId - Delete callback ID (null to skip)
      */
-    subscribeTable(connectionId, tableName, onInsertId, onUpdateId, onDeleteId) {
+    subscribeTable(
+        connectionId: number,
+        tableName: string,
+        onInsertId: number | null,
+        onUpdateId: number | null,
+        onDeleteId: number | null
+    ): void {
         const conn = this.connections.get(connectionId);
-        if (!conn) throw new Error(`Invalid connection ID: ${connectionId}`);
+        if (!conn) {
+            throw new Error(`Invalid connection ID: ${connectionId}`);
+        }
 
-        const table = conn.db[tableName];
+        const table = (conn.db as any)[tableName];
         if (!table) {
             console.error(`[SpacetimeDB Bridge] Table not found: ${tableName}`);
             throw new Error(`Table not found: ${tableName}`);
@@ -186,11 +196,11 @@ export class SpacetimeDBBridge {
         if (onInsertId !== null) {
             const cb = this.callbacks.get(onInsertId);
             if (cb) {
-                table.onInsert((row, reducerEvent) => {
-                    const data = {
-                        row: row,
+                table.onInsert((row: any, reducerEvent?: ReducerEvent) => {
+                    const data: TableEventData = {
+                        row,
                         reducerEvent: reducerEvent ? {
-                            callerIdentity: reducerEvent.callerIdentity.toString(),
+                            callerIdentity: reducerEvent.callerIdentity.toHexString(),
                             reducerName: reducerEvent.reducerName,
                             args: reducerEvent.args,
                         } : null
@@ -203,12 +213,12 @@ export class SpacetimeDBBridge {
         if (onUpdateId !== null) {
             const cb = this.callbacks.get(onUpdateId);
             if (cb) {
-                table.onUpdate((oldRow, newRow, reducerEvent) => {
-                    const data = {
-                        oldRow: oldRow,
-                        newRow: newRow,
+                table.onUpdate((oldRow: any, newRow: any, reducerEvent?: ReducerEvent) => {
+                    const data: TableEventData = {
+                        oldRow,
+                        newRow,
                         reducerEvent: reducerEvent ? {
-                            callerIdentity: reducerEvent.callerIdentity.toString(),
+                            callerIdentity: reducerEvent.callerIdentity.toHexString(),
                             reducerName: reducerEvent.reducerName,
                             args: reducerEvent.args,
                         } : null
@@ -221,11 +231,11 @@ export class SpacetimeDBBridge {
         if (onDeleteId !== null) {
             const cb = this.callbacks.get(onDeleteId);
             if (cb) {
-                table.onDelete((row, reducerEvent) => {
-                    const data = {
-                        row: row,
+                table.onDelete((row: any, reducerEvent?: ReducerEvent) => {
+                    const data: TableEventData = {
+                        row,
                         reducerEvent: reducerEvent ? {
-                            callerIdentity: reducerEvent.callerIdentity.toString(),
+                            callerIdentity: reducerEvent.callerIdentity.toHexString(),
                             reducerName: reducerEvent.reducerName,
                             args: reducerEvent.args,
                         } : null
@@ -238,10 +248,8 @@ export class SpacetimeDBBridge {
 
     /**
      * Register a JavaScript callback that can be called from Rust
-     * @param {Function} callback - JavaScript function
-     * @returns {number} Callback ID
      */
-    registerCallback(callback) {
+    registerCallback(callback: WasmCallback): number {
         const id = this.nextCallbackId++;
         this.callbacks.set(id, callback);
         return id;
@@ -249,9 +257,15 @@ export class SpacetimeDBBridge {
 
     /**
      * Unregister a callback
-     * @param {number} callbackId - Callback ID
      */
-    unregisterCallback(callbackId) {
+    unregisterCallback(callbackId: number): void {
         this.callbacks.delete(callbackId);
+    }
+}
+
+// Declare the global interface extension
+declare global {
+    interface Window {
+        __SPACETIMEDB_BRIDGE__?: SpacetimeDBBridge;
     }
 }

@@ -1,0 +1,16 @@
+{
+  "name": "bevy-spacetimedb-bridge",
+  "version": "0.1.0",
+  "description": "TypeScript bridge for bevy_spacetimedb_wasm",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "dependencies": {
+    "@clockworklabs/spacetimedb-sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

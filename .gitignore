@@ -1,2 +1,9 @@
 /target
 examples/stdb
+
+# TypeScript build artifacts
+bevy_spacetimedb/js/node_modules/
+bevy_spacetimedb/js/dist/
+bevy_spacetimedb/js/*.js
+bevy_spacetimedb/js/*.d.ts
+bevy_spacetimedb/js/*.map

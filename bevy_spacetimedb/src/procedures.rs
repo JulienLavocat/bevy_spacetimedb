@@ -31,7 +31,7 @@ impl<
         };
 
         // The register_fn will get called once the connection is built.
-        self.procedure_registers.push(Box::new(register_fn));
+        self.procedure_registers.lock().unwrap().push(Box::new(register_fn));
 
         self
     }

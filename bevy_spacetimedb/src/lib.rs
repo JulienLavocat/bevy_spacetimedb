@@ -15,7 +15,7 @@ pub use aliases::*;
 pub use bevy_spacetimedb_macros::*;
 pub use channel_receiver::AddEventChannelAppExtensions;
 pub use events::*;
-pub use plugin::*;
+pub use plugin::{StdbPlugin, StdbPluginConfig, connect_with_token};
 pub use reducers::RegisterableReducerEvent;
 pub use stdb_connection::*;
 pub use tables::TableEvents;

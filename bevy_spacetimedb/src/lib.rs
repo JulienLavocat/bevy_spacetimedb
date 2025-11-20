@@ -19,4 +19,4 @@ pub use messages::*;
 pub use plugin::*;
 pub use reducers::RegisterableReducerMessage;
 pub use stdb_connection::*;
-pub use tables::TableMessages;
+pub use tables::{TableMessages, TableMessagesWithoutPrimaryKey};

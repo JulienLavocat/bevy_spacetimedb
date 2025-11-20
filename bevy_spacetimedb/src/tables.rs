@@ -47,18 +47,18 @@ impl TableMessages {
     }
 }
 
-/// Passed into [`StdbPlugin::add_table_without_pk`] to determine which table events to register.
+/// Passed into [`StdbPlugin::add_table_without_pk`] to determine which table messages to register.
 /// Specifically for tables with no Primary keys
 #[derive(Debug, Default, Clone, Copy)]
-pub struct TableEventsWithoutPrimaryKey {
-    /// Same as [`TableEvents::insert`]
+pub struct TableMessagesWithoutPrimaryKey {
+    /// Same as [`TableMessages::insert`]
     pub insert: bool,
-    /// Same as [`TableEvents::delete`]
+    /// Same as [`TableMessages::delete`]
     pub delete: bool,
 }
 
-impl TableEventsWithoutPrimaryKey {
-    /// Register all available table events
+impl TableMessagesWithoutPrimaryKey {
+    /// Register all available table messages
     pub fn all() -> Self {
         Self {
             insert: true,

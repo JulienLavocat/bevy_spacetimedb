@@ -5,13 +5,134 @@ use crate::{
 use bevy::{
     app::{App, Plugin},
     platform::collections::HashMap,
+    prelude::Resource,
 };
+use std::marker::PhantomData;
 use spacetimedb_sdk::{Compression, DbConnectionBuilder, DbContext};
 use std::{
     any::{Any, TypeId},
-    sync::{Mutex, mpsc::channel},
+    sync::{Arc, Mutex, mpsc::{channel, Sender}},
     thread::JoinHandle,
 };
+
+/// Configuration for delayed SpacetimeDB connection
+pub struct StdbPluginConfig<
+    C: spacetimedb_sdk::__codegen::DbConnection<Module = M> + DbContext + Send + Sync,
+    M: spacetimedb_sdk::__codegen::SpacetimeModule<DbConnection = C>,
+> {
+    pub module_name: String,
+    pub uri: String,
+    pub run_fn: fn(&C) -> JoinHandle<()>,
+    pub compression: Compression,
+    pub light_mode: bool,
+    pub send_connected: Sender<StdbConnectedEvent>,
+    pub send_disconnected: Sender<StdbDisconnectedEvent>,
+    pub send_connect_error: Sender<StdbConnectionErrorEvent>,
+    _phantom: PhantomData<(C, M)>,
+}
+
+// Manually implement Resource since we can't derive it with PhantomData
+impl<
+    C: spacetimedb_sdk::__codegen::DbConnection<Module = M> + DbContext + Send + Sync + 'static,
+    M: spacetimedb_sdk::__codegen::SpacetimeModule<DbConnection = C> + 'static,
+> Resource for StdbPluginConfig<C, M> {}
+
+/// Stores plugin data (table/reducer registrations) for delayed connection
+struct DelayedPluginData<
+    C: spacetimedb_sdk::__codegen::DbConnection<Module = M> + DbContext + Send + Sync,
+    M: spacetimedb_sdk::__codegen::SpacetimeModule<DbConnection = C>,
+> {
+    event_senders: Arc<Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>>,
+    #[allow(clippy::type_complexity)]
+    table_registers: Arc<Mutex<Vec<
+        Box<dyn Fn(&StdbPlugin<C, M>, &mut App, &'static <C as DbContext>::DbView) + Send + Sync>,
+    >>>,
+    #[allow(clippy::type_complexity)]
+    reducer_registers: Arc<Mutex<Vec<Box<dyn Fn(&mut App, &<C as DbContext>::Reducers) + Send + Sync>>>>,
+}
+
+/// Connect to SpacetimeDB with the given token (for delayed connection mode)
+/// 
+/// Call this from an exclusive system (system with `world: &mut World` parameter)
+/// after OAuth completes to establish the connection with the token.
+pub fn connect_with_token<
+    C: spacetimedb_sdk::__codegen::DbConnection<Module = M> + DbContext + Send + Sync,
+    M: spacetimedb_sdk::__codegen::SpacetimeModule<DbConnection = C>,
+>(
+    world: &mut bevy::prelude::World,
+    token: Option<String>,
+) {
+    let config = world.remove_resource::<StdbPluginConfig<C, M>>()
+        .expect("StdbPluginConfig not found - did you call with_delayed_connect()?");
+    
+    let plugin_data = world.remove_non_send_resource::<DelayedPluginData<C, M>>()
+        .expect("DelayedPluginData not found");
+    
+    let send_connected = config.send_connected.clone();
+    let send_disconnected = config.send_disconnected.clone();
+    let send_connect_error = config.send_connect_error.clone();
+    
+    let conn = DbConnectionBuilder::<M>::new()
+        .with_module_name(config.module_name)
+        .with_uri(config.uri)
+        .with_token(token)
+        .with_compression(config.compression)
+        .with_light_mode(config.light_mode)
+        .on_connect_error(move |_ctx, err| {
+            send_connect_error
+                .send(StdbConnectionErrorEvent { err })
+                .unwrap();
+        })
+        .on_disconnect(move |_ctx, err| {
+            send_disconnected
+                .send(StdbDisconnectedEvent { err })
+                .unwrap();
+        })
+        .on_connect(move |_ctx, id, token| {
+            send_connected
+                .send(StdbConnectedEvent {
+                    identity: id,
+                    access_token: token.to_string(),
+                })
+                .unwrap();
+        })
+        .build()
+        .expect("Failed to build delayed connection");
+
+    let conn = Box::<C>::leak(Box::new(conn));
+
+    // NOW register tables and reducers with the actual connection!
+    // Create a temporary plugin with the stored event senders
+    let temp_plugin = StdbPlugin::<C, M> {
+        module_name: None,
+        uri: None,
+        token: None,
+        run_fn: None,
+        compression: None,
+        light_mode: false,
+        delayed_connect: false,
+        event_senders: Arc::clone(&plugin_data.event_senders),
+        table_registers: Arc::new(Mutex::new(Vec::new())),
+        reducer_registers: Arc::new(Mutex::new(Vec::new())),
+    };
+    
+    // Register tables with the real connection
+    let table_regs = plugin_data.table_registers.lock().unwrap();
+    for table_register in table_regs.iter() {
+        table_register(&temp_plugin, unsafe { &mut *(world as *mut _ as *mut App) }, conn.db());
+    }
+    drop(table_regs);
+    
+    // Register reducers
+    let reducer_regs = plugin_data.reducer_registers.lock().unwrap();
+    for reducer_register in reducer_regs.iter() {
+        reducer_register(unsafe { &mut *(world as *mut _ as *mut App) }, conn.reducers());
+    }
+    drop(reducer_regs);
+
+    (config.run_fn)(conn);
+    world.insert_resource(StdbConnection::new(conn));
+}
 
 /// The plugin for connecting SpacetimeDB with your bevy application.
 pub struct StdbPlugin<
@@ -24,16 +145,17 @@ pub struct StdbPlugin<
     run_fn: Option<fn(&C) -> JoinHandle<()>>,
     compression: Option<Compression>,
     light_mode: bool,
+    delayed_connect: bool,  // NEW: Skip immediate connection
 
     // Stores Senders for registered table events.
-    pub(crate) event_senders: Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
+    pub(crate) event_senders: Arc<Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>>,
     #[allow(clippy::type_complexity)]
-    pub(crate) table_registers: Vec<
+    pub(crate) table_registers: Arc<Mutex<Vec<
         Box<dyn Fn(&StdbPlugin<C, M>, &mut App, &'static <C as DbContext>::DbView) + Send + Sync>,
-    >,
+    >>>,
     #[allow(clippy::type_complexity)]
     pub(crate) reducer_registers:
-        Vec<Box<dyn Fn(&mut App, &<C as DbContext>::Reducers) + Send + Sync>>,
+        Arc<Mutex<Vec<Box<dyn Fn(&mut App, &<C as DbContext>::Reducers) + Send + Sync>>>>,
 }
 
 impl<
@@ -49,10 +171,11 @@ impl<
             run_fn: None,
             compression: Some(Compression::default()),
             light_mode: false,
+            delayed_connect: false,  // NEW: Default to immediate connection
 
-            event_senders: Mutex::default(),
-            table_registers: Vec::default(),
-            reducer_registers: Vec::default(),
+            event_senders: Arc::new(Mutex::default()),
+            table_registers: Arc::new(Mutex::new(Vec::default())),
+            reducer_registers: Arc::new(Mutex::new(Vec::default())),
         }
     }
 }
@@ -121,6 +244,15 @@ impl<
         self.light_mode = light_mode;
         self
     }
+
+    /// Enable delayed connection mode. The connection will not be started
+    /// during plugin build. You must manually call `connect_with_token()` later.
+    ///
+    /// This is useful for OAuth flows where the token is not available at app startup.
+    pub fn with_delayed_connect(mut self, delayed: bool) -> Self {
+        self.delayed_connect = delayed;
+        self
+    }
 }
 
 impl<
@@ -142,6 +274,32 @@ impl<
         app.add_event_channel::<StdbConnectionErrorEvent>(recv_connect_error)
             .add_event_channel::<StdbConnectedEvent>(recv_connected)
             .add_event_channel::<StdbDisconnectedEvent>(recv_disconnected);
+
+        // NEW: Check if we should delay the connection
+        if self.delayed_connect {
+            // Store configuration AND table/reducer registrations for later connection
+            app.insert_resource(StdbPluginConfig::<C, M> {
+                module_name: self.module_name.clone().unwrap(),
+                uri: self.uri.clone().unwrap(),
+                run_fn: self.run_fn.expect("No run function specified!"),
+                compression: self.compression.unwrap_or_default(),
+                light_mode: self.light_mode,
+                send_connected,
+                send_disconnected,
+                send_connect_error,
+                _phantom: PhantomData,
+            });
+            
+            // Clone the Arc pointers to share the data with connect_with_token
+            let plugin_for_later = DelayedPluginData::<C, M> {
+                table_registers: Arc::clone(&self.table_registers),
+                reducer_registers: Arc::clone(&self.reducer_registers),
+                event_senders: Arc::clone(&self.event_senders),
+            };
+            app.insert_non_send_resource(plugin_for_later);
+            
+            return; // Skip connection - it will be created later via connect_with_token
+        }
 
         // FIXME App should not crash if intial connection fails.
         let conn = DbConnectionBuilder::<M>::new()
@@ -176,11 +334,17 @@ impl<
         // Because conn has to live until the end of the program anyways, not using it would not make for any performance improvements.
         let conn = Box::<C>::leak(Box::new(conn));
 
-        for table_register in self.table_registers.iter() {
-            table_register(self, app, conn.db());
+        {
+            let table_regs = self.table_registers.lock().unwrap();
+            for table_register in table_regs.iter() {
+                table_register(self, app, conn.db());
+            }
         }
-        for reducer_register in self.reducer_registers.iter() {
-            reducer_register(app, conn.reducers());
+        {
+            let reducer_regs = self.reducer_registers.lock().unwrap();
+            for reducer_register in reducer_regs.iter() {
+                reducer_register(app, conn.reducers());
+            }
         }
 
         let run_fn = self.run_fn.expect("No run function specified!");

@@ -107,7 +107,7 @@ impl<
         };
 
         // Store this table, and later when the plugin is built, call them on .
-        self.table_registers.push(Box::new(register));
+        self.table_registers.lock().unwrap().push(Box::new(register));
 
         self
     }
@@ -131,7 +131,7 @@ impl<
         };
 
         // Store this table, and later when the plugin is built, call them on .
-        self.table_registers.push(Box::new(register));
+        self.table_registers.lock().unwrap().push(Box::new(register));
 
         self
     }

@@ -3,7 +3,6 @@ use crate::{
     InsertUpdateEvent, StdbPlugin, UpdateEvent,
 };
 use bevy::app::App;
-use std::sync::mpsc::Sender;
 use wasm_bindgen::prelude::*;
 
 /// Trait for table rows that can be synchronized from SpacetimeDB
@@ -123,6 +122,7 @@ impl StdbPlugin {
 
 /// Internal table configuration
 pub(crate) struct TableConfig {
+    #[allow(dead_code)]
     pub table_name: String,
     pub events: TableEvents,
     pub setup_fn: Box<dyn Fn(&SpacetimeDBBridge, u32, &TableEvents, &mut App) + Send + Sync>,

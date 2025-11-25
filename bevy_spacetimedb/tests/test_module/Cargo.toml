@@ -1,0 +1,12 @@
+[package]
+name = "bevy_spacetimedb_test_module"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+spacetimedb = "1.0"

@@ -13,6 +13,7 @@ use wasm_bindgen::prelude::*;
 extern "C" {
     /// The SpacetimeDB bridge singleton
     #[wasm_bindgen(js_name = SpacetimeDBBridge)]
+    #[derive(Clone)]
     pub type SpacetimeDBBridge;
 
     /// Create a new connection to SpacetimeDB
@@ -99,37 +100,53 @@ extern "C" {
 /// </script>
 /// ```
 pub fn get_bridge() -> SpacetimeDBBridge {
-    let window = web_sys::window().expect("No window object - not running in browser?");
-
-    match js_sys::Reflect::get(&window, &JsValue::from_str("__SPACETIMEDB_BRIDGE__")) {
-        Ok(bridge) if !bridge.is_undefined() && !bridge.is_null() => {
-            bridge.unchecked_into()
-        }
-        _ => panic!(
-            "\n\n\
-            ╔══════════════════════════════════════════════════════════════════════════════╗\n\
-            ║ SpacetimeDB TypeScript SDK Bridge Not Found!                                ║\n\
-            ╠══════════════════════════════════════════════════════════════════════════════╣\n\
-            ║                                                                              ║\n\
-            ║ The bevy_spacetimedb_wasm plugin requires the SpacetimeDB TypeScript SDK    ║\n\
-            ║ bridge to be loaded and initialized BEFORE the WASM module loads.           ║\n\
-            ║                                                                              ║\n\
-            ║ Add this to your HTML file:                                                 ║\n\
-            ║                                                                              ║\n\
-            ║   <script type=\"module\">                                                    ║\n\
-            ║     import {{ SpacetimeDBBridge }} from './js/spacetimedb-bridge.js';        ║\n\
-            ║     window.__SPACETIMEDB_BRIDGE__ = new SpacetimeDBBridge();                ║\n\
-            ║                                                                              ║\n\
-            ║     // THEN load your WASM module                                           ║\n\
-            ║     import init from './pkg/my_game.js';                                    ║\n\
-            ║     await init();                                                           ║\n\
-            ║   </script>                                                                 ║\n\
-            ║                                                                              ║\n\
-            ║ The bridge file should be at: bevy_spacetimedb/js/spacetimedb-bridge.js    ║\n\
-            ║                                                                              ║\n\
-            ╚══════════════════════════════════════════════════════════════════════════════╝\n\n"
-        ),
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(js_namespace = global, js_name = __SPACETIMEDB_BRIDGE__)]
+        static BRIDGE_GLOBAL: JsValue;
     }
+
+    // Try browser window first
+    if let Some(window) = web_sys::window() {
+        if let Ok(bridge) = js_sys::Reflect::get(&window, &JsValue::from_str("__SPACETIMEDB_BRIDGE__")) {
+            if !bridge.is_undefined() && !bridge.is_null() {
+                return bridge.unchecked_into();
+            }
+        }
+    }
+
+    // Try Node.js global
+    if !BRIDGE_GLOBAL.is_undefined() && !BRIDGE_GLOBAL.is_null() {
+        return BRIDGE_GLOBAL.clone().unchecked_into();
+    }
+
+    panic!(
+        "\n\n\
+        ╔══════════════════════════════════════════════════════════════════════════════╗\n\
+        ║ SpacetimeDB TypeScript SDK Bridge Not Found!                                ║\n\
+        ╠══════════════════════════════════════════════════════════════════════════════╣\n\
+        ║                                                                              ║\n\
+        ║ The bevy_spacetimedb_wasm plugin requires the SpacetimeDB TypeScript SDK    ║\n\
+        ║ bridge to be loaded and initialized BEFORE the WASM module loads.           ║\n\
+        ║                                                                              ║\n\
+        ║ For browser environments, add this to your HTML file:                       ║\n\
+        ║                                                                              ║\n\
+        ║   <script type=\"module\">                                                    ║\n\
+        ║     import {{ SpacetimeDBBridge }} from './js/spacetimedb-bridge.js';        ║\n\
+        ║     window.__SPACETIMEDB_BRIDGE__ = new SpacetimeDBBridge();                ║\n\
+        ║                                                                              ║\n\
+        ║     // THEN load your WASM module                                           ║\n\
+        ║     import init from './pkg/my_game.js';                                    ║\n\
+        ║     await init();                                                           ║\n\
+        ║   </script>                                                                 ║\n\
+        ║                                                                              ║\n\
+        ║ For Node.js/test environments:                                              ║\n\
+        ║   global.__SPACETIMEDB_BRIDGE__ = new SpacetimeDBBridge();                 ║\n\
+        ║                                                                              ║\n\
+        ║ The bridge file should be at: bevy_spacetimedb/js/spacetimedb-bridge.js    ║\n\
+        ║                                                                              ║\n\
+        ╚══════════════════════════════════════════════════════════════════════════════╝\n\n"
+    )
 }
 
 #[cfg(test)]

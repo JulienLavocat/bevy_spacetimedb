@@ -25,3 +25,6 @@ features = [
     "console",
     "Window",
 ]
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"

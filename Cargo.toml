@@ -1,9 +1,10 @@
 [workspace]
 members = ["bevy_spacetimedb"]
+exclude = ["bevy_spacetimedb/tests/test_module"]
 resolver = "2"
 
 [workspace.dependencies]
-bevy = { version = "0.16.1", default-features = false, features = [
+bevy = { version = "0.17", default-features = false, features = [
     "std",
     "bevy_log",
 ] }

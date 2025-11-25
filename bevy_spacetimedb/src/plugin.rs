@@ -3,7 +3,7 @@ use crate::{
     StdbConnectionErrorEvent, StdbDisconnectedEvent, StdbConnection,
     tables::TableConfig,
 };
-use bevy::{app::{App, Plugin}, prelude::PreUpdate};
+use bevy::app::{App, Plugin};
 use wasm_bindgen::prelude::*;
 
 /// The main plugin for connecting SpacetimeDB to your Bevy application

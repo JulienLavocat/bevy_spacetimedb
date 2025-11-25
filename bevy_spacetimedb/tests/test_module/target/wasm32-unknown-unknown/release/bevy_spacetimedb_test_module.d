@@ -1,0 +1,1 @@
+/home/mortoc/Projects/bevy_spacetimedb_wasm/bevy_spacetimedb/tests/test_module/target/wasm32-unknown-unknown/release/bevy_spacetimedb_test_module.wasm: /home/mortoc/Projects/bevy_spacetimedb_wasm/bevy_spacetimedb/tests/test_module/src/lib.rs

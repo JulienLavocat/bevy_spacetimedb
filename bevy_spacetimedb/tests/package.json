@@ -1,0 +1,9 @@
+{
+  "name": "bevy-spacetimedb-wasm-tests",
+  "version": "0.1.0",
+  "description": "Test dependencies for bevy_spacetimedb_wasm",
+  "private": true,
+  "dependencies": {
+    "ws": "^8.0.0"
+  }
+}

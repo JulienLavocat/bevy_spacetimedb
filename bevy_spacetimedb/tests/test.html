@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>bevy_spacetimedb_wasm Tests</title>
+</head>
+<body>
+    <script type="module">
+        // Minimal SpacetimeDB bridge mock for testing
+        class SpacetimeDBBridge {
+            constructor() {
+                this.connections = new Map();
+                this.callbacks = new Map();
+                this.nextConnectionId = 1;
+                this.nextCallbackId = 1;
+                console.log('SpacetimeDB Bridge initialized');
+            }
+
+            createConnection(uri, moduleName, authToken) {
+                const connectionId = this.nextConnectionId++;
+                this.connections.set(connectionId, {
+                    uri,
+                    moduleName,
+                    authToken,
+                    connected: false,
+                    callbacks: {
+                        onConnect: [],
+                        onDisconnect: [],
+                        onError: []
+                    },
+                    tables: new Map()
+                });
+                console.log(`Created connection ${connectionId} to ${uri}/${moduleName}`);
+                return connectionId;
+            }
+
+            async connect(connectionId) {
+                const conn = this.connections.get(connectionId);
+                if (!conn) {
+                    throw new Error(`Connection ${connectionId} not found`);
+                }
+
+                // Simulate connection to SpacetimeDB
+                return new Promise((resolve, reject) => {
+                    // Try to connect to real server, but don't fail if it's not available
+                    const ws = new WebSocket(`ws://localhost:3000/database/websocket`);
+
+                    const timeout = setTimeout(() => {
+                        console.warn('Connection timeout - using mock mode');
+                        conn.connected = true;
+                        conn.callbacks.onConnect.forEach(cb => cb());
+                        resolve();
+                    }, 2000);
+
+                    ws.onopen = () => {
+                        clearTimeout(timeout);
+                        console.log(`Connected to SpacetimeDB at ${conn.uri}`);
+                        conn.connected = true;
+                        conn.ws = ws;
+                        conn.callbacks.onConnect.forEach(cb => cb());
+                        resolve();
+                    };
+
+                    ws.onerror = (error) => {
+                        clearTimeout(timeout);
+                        console.warn('WebSocket error, using mock mode:', error);
+                        conn.connected = true;
+                        conn.callbacks.onConnect.forEach(cb => cb());
+                        resolve();
+                    };
+                });
+            }
+
+            async disconnect(connectionId) {
+                const conn = this.connections.get(connectionId);
+                if (!conn) {
+                    throw new Error(`Connection ${connectionId} not found`);
+                }
+
+                return new Promise((resolve) => {
+                    if (conn.ws) {
+                        conn.ws.close();
+                    }
+                    conn.connected = false;
+                    conn.callbacks.onDisconnect.forEach(cb => cb(null));
+                    console.log(`Disconnected connection ${connectionId}`);
+                    resolve();
+                });
+            }
+
+            onConnect(connectionId, callbackId) {
+                const conn = this.connections.get(connectionId);
+                const callback = this.callbacks.get(callbackId);
+                if (conn && callback) {
+                    conn.callbacks.onConnect.push(callback);
+                }
+            }
+
+            onDisconnect(connectionId, callbackId) {
+                const conn = this.connections.get(connectionId);
+                const callback = this.callbacks.get(callbackId);
+                if (conn && callback) {
+                    conn.callbacks.onDisconnect.push(callback);
+                }
+            }
+
+            onConnectionError(connectionId, callbackId) {
+                const conn = this.connections.get(connectionId);
+                const callback = this.callbacks.get(callbackId);
+                if (conn && callback) {
+                    conn.callbacks.onError.push(callback);
+                }
+            }
+
+            async callReducer(connectionId, reducerName, args) {
+                const conn = this.connections.get(connectionId);
+                if (!conn) {
+                    throw new Error(`Connection ${connectionId} not found`);
+                }
+
+                console.log(`Calling reducer ${reducerName} with args:`, args);
+
+                return new Promise((resolve) => {
+                    // Simulate async reducer call
+                    setTimeout(() => {
+                        console.log(`Reducer ${reducerName} completed`);
+                        resolve({ success: true });
+                    }, 100);
+                });
+            }
+
+            async subscribe(connectionId, query) {
+                const conn = this.connections.get(connectionId);
+                if (!conn) {
+                    throw new Error(`Connection ${connectionId} not found`);
+                }
+
+                console.log(`Subscribing to query: ${query}`);
+                return Promise.resolve();
+            }
+
+            subscribeTable(connectionId, tableName, onInsertId, onUpdateId, onDeleteId) {
+                const conn = this.connections.get(connectionId);
+                if (!conn) {
+                    console.error(`Connection ${connectionId} not found`);
+                    return;
+                }
+
+                conn.tables.set(tableName, {
+                    onInsert: onInsertId ? this.callbacks.get(onInsertId) : null,
+                    onUpdate: onUpdateId ? this.callbacks.get(onUpdateId) : null,
+                    onDelete: onDeleteId ? this.callbacks.get(onDeleteId) : null
+                });
+
+                console.log(`Subscribed to table ${tableName}`);
+            }
+
+            registerCallback(callback) {
+                const callbackId = this.nextCallbackId++;
+                this.callbacks.set(callbackId, callback);
+                return callbackId;
+            }
+
+            unregisterCallback(callbackId) {
+                this.callbacks.delete(callbackId);
+            }
+        }
+
+        // Initialize the global bridge
+        window.__SPACETIMEDB_BRIDGE__ = new SpacetimeDBBridge();
+        console.log('Bridge ready for tests');
+    </script>
+</body>
+</html>

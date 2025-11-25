@@ -1,5 +1,4 @@
 use crate::bridge::SpacetimeDBBridge;
-use wasm_bindgen::JsValue;
 
 /// Trait for reducers that can be called on the SpacetimeDB server
 ///
@@ -56,16 +55,15 @@ impl<'a> ReducerCaller<'a> {
         // Serialize the arguments to JsValue
         let args_value = serde_wasm_bindgen::to_value(&args)?;
 
-        let bridge = self.bridge.clone();
         let connection_id = self.connection_id;
         let reducer_name = R::NAME.to_string();
 
+        // Call the reducer and get the promise
+        let promise = self.bridge.call_reducer(connection_id, &reducer_name, args_value);
+
         // Call the reducer asynchronously
         wasm_bindgen_futures::spawn_local(async move {
-            match wasm_bindgen_futures::JsFuture::from(
-                bridge.call_reducer(connection_id, &reducer_name, args_value),
-            )
-            .await
+            match wasm_bindgen_futures::JsFuture::from(promise).await
             {
                 Ok(_) => {
                     web_sys::console::log_1(

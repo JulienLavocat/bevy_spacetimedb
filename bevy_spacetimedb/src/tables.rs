@@ -116,19 +116,9 @@ impl<
         self
     }
 
-    /// Registers a table without primary key for the bevy application with all messages enabled.
-    pub fn add_table_without_pk<TRow, TTable, F>(self, accessor: F) -> Self
-    where
-        TRow: Send + Sync + Clone + 'static,
-        TTable: Table<Row = TRow>,
-        F: 'static + Send + Sync + Fn(&'static C::DbView) -> TTable,
-    {
-        self.add_partial_table_without_pk(accessor, TableMessagesWithoutPrimaryKey::all())
-    }
-
-    ///Registers a table without primary key for the bevy application with the specified messages in the `messages` parameter.
+    /// Registers a table without primary key for the bevy application with the specified messages in the `messages` parameter.
     pub fn add_partial_table_without_pk<TRow, TTable, F>(
-        mut self,
+        self,
         accessor: F,
         messages: TableMessagesWithoutPrimaryKey,
     ) -> Self
@@ -147,8 +137,10 @@ impl<
                 plugin.on_delete(app, &table);
             }
         };
+
         // Store this table, and later when the plugin is built, call them on .
         self.table_registers.lock().unwrap().push(Box::new(register));
+
         self
     }
 

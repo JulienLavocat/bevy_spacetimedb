@@ -9,8 +9,6 @@ Use [SpacetimeDB](https://spacetimedb.com) in your Bevy application.
 
 </div>
 
-**NOTE: VERSION 1.X.X WILL BE YANKED AND REPLACE WITH VERSION 0.X.X TO ALIGN WITH BEVY'S VERSIONING SCHEME**
-
 ## Highlights
 
 This plugin will provide you with:
@@ -33,7 +31,7 @@ This plugin is compatible with Bevy 0.15.x, 0.16.x, and 0.17.x; the latest versi
 | ------------------------ | ------------ |
 | <= 0.3.x                 | 0.15.x       |
 | 0.4.x - 1.0.x            | 0.16.x       |
-| >= 0.7.0                 | 0.17.x       |
+| >= 1.1.x                 | 0.17.x       |
 
 ## Usage
 

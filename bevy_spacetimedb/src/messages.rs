@@ -69,17 +69,3 @@ impl<T> ReducerResultMessage<T> {
         Self { result }
     }
 }
-
-#[derive(Message, Debug)]
-pub struct ProcedureResultMessage<T> {
-    /// The result of the reducer invocation.
-    pub result: T,
-}
-
-impl<T> ProcedureResultMessage<T> {
-    /// Creates a new reducer result message.
-    pub fn new(result: T) -> Self {
-        Self { result }
-    }
-}
-

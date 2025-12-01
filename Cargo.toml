@@ -1,9 +1,9 @@
 [workspace]
-members = ["bevy_spacetimedb", "macros", "example_app"]
+members = ["bevy_spacetimedb", "macros"]
 
 [workspace.dependencies]
-bevy = { version = "0.16.1", default-features = false, features = [
+bevy = { version = "0.17.3", default-features = false, features = [
     "std",
     "bevy_log",
 ] }
-spacetimedb-sdk = { version = "1.4.0" }
+spacetimedb-sdk = { version = "1.8.0" }

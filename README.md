@@ -14,30 +14,32 @@ Use [SpacetimeDB](https://spacetimedb.com) in your Bevy application.
 This plugin will provide you with:
 
 - A resource `StdbConnection` to call your reducers, subscribe to tables, etc.
-- Connection lifecycle events: `StdbConnectedEvent`, `StdbDisconnectedEvent`, `StdbConnectionErrorEvent` as Bevy's `EventsReader`
-- All the tables events (row inserted/updated/deleted): `EventsReader`:
-  - `ReadInsertEvent<T>`
-  - `ReadUpdateEvent<T>`
-  - `ReadInsertUpdateEvent<T>`
-  - `ReadDeleteEvent<T>`
+- Connection lifecycle messages: `StdbConnectedMessage`, `StdbDisconnectedMessage`, `StdbConnectionErrorMessage` as Bevy's `MessageReader`
+- All the table messages (row inserted/updated/deleted): `MessageReader`:
+  - `ReadInsertMessage<T>`
+  - `ReadUpdateMessage<T>`
+  - `ReadInsertUpdateMessage<T>`
+  - `ReadDeleteMessage<T>`
 
 Check the example app in `/example_app` for a complete example of how to use the plugin.
 
 ## Bevy versions
 
-This plugin is compatible with Bevy 0.15.x and 0.16.x, the latest version of the plugin is compatible with Bevy 0.16.x.
+This plugin is compatible with Bevy 0.15.x, 0.16.x, and 0.17.x; the latest version targets Bevy 0.17.x.
 
 | bevy_spacetimedb version | Bevy version |
 | ------------------------ | ------------ |
 | <= 0.3.x                 | 0.15.x       |
-| >= 0.4.x                 | 0.16.x       |
+| 0.4.x - 1.0.x            | 0.16.x       |
+| >= 1.1.x                 | 0.17.x       |
 
 ## Usage
 
 0. Add the plugin to your project: `cargo add bevy_spacetimedb`
-1. Add the plugin to your bevy application:
+1. Add the plugin to your Bevy application:
 
 ```rust
+use bevy::{log::LogPlugin, prelude::*};
 App::new()
         .add_plugins((MinimalPlugins, LogPlugin::default()))
         .add_plugins(
@@ -47,21 +49,21 @@ App::new()
                 .with_run_fn(DbConnection::run_threaded)
                 .add_table(RemoteTables::lobby)
                 .add_table(RemoteTables::user)
-                .add_partial_table(RemoteTables::player, TableEvents::no_update())
+                .add_partial_table(RemoteTables::player, TableMessages::no_update())
                 .add_reducer::<CreateLobby>()
                 .add_reducer::<SetName>(),
         )
 ```
 
-3. Add a system handling connection events
-   You can also add systems for `StdbDisconnectedEvent` and `StdbConnectionErrorEvent`
+3. Add a system handling connection messages
+   You can also add systems for `StdbDisconnectedMessage` and `StdbConnectionErrorMessage`
 
 ```rust
 fn on_connected(
-    mut events: ReadStdbConnectedEvent,
+    mut messages: ReadStdbConnectedMessage,
     stdb: Res<StdbConnection<DbConnection>>,
 ) {
-    for _ in events.read() {
+    for _ in messages.read() {
         info!("Connected to SpacetimeDB");
 
         // Call any reducers
@@ -70,7 +72,7 @@ fn on_connected(
             .unwrap();
 
         // Subscribe to any tables
-        stdb.subscribe()
+        stdb.subscription_builder()
             .on_applied(|_| info!("Subscription to players applied"))
             .on_error(|_, err| error!("Subscription to players failed for: {}", err))
             .subscribe("SELECT * FROM players");
@@ -81,33 +83,33 @@ fn on_connected(
 }
 ```
 
-3. Add any systems that you need in order to handle the table events you
+3. Add any systems that you need in order to handle the table messages you
    declared and do whatever you want:
 
 ```rust
-fn on_player_inserted(mut events: ReadInsertEvent<Player>, mut commands: Commands) {
-    for event in events.read() {
-        commands.spawn(Player { id: event.row.id });
-        info!("Player inserted: {:?} -> {:?}", event.row);
+fn on_player_inserted(mut messages: ReadInsertMessage<Player>, mut commands: Commands) {
+    for message in messages.read() {
+        commands.spawn(Player { id: message.row.id });
+        info!("Player inserted: {:?} -> {:?}", message.row);
     }
 }
 
-fn on_player_updated(mut events: ReadUpdateEvent<Player>) {
-    for event in events.read() {
-        info!("Player updated: {:?} -> {:?}", event.old, event.new);
+fn on_player_updated(mut messages: ReadUpdateMessage<Player>) {
+    for message in messages.read() {
+        info!("Player updated: {:?} -> {:?}", message.old, message.new);
     }
 }
 
-fn on_player_insert_update(mut events: ReadInsertUpdateEvent<Player>, q_players: Query<Entity, Player>) {
-    for event in events.read() {
-        info!("Player deleted: {:?} -> {:?}", event.row);
+fn on_player_insert_update(mut messages: ReadInsertUpdateMessage<Player>, q_players: Query<Entity, Player>) {
+    for message in messages.read() {
+        info!("Player deleted: {:?} -> {:?}", message.row);
         // Delete the player's entity
     }
 }
 
-fn on_player_deleted(mut events: ReadDeleteEvent<Player>, q_players: Query<Entity, Player>) {
-    for event in events.read() {
-        info!("Player deleted: {:?} -> {:?}", event.row);
+fn on_player_deleted(mut messages: ReadDeleteMessage<Player>, q_players: Query<Entity, Player>) {
+    for message in messages.read() {
+        info!("Player deleted: {:?} -> {:?}", message.row);
         // Delete the player's entity
     }
 }

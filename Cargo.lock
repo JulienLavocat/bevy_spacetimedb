@@ -730,7 +730,7 @@ dependencies = [
 
 [[package]]
 name = "bevy_spacetimedb"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "bevy",
  "bevy_spacetimedb_macros 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -116,6 +116,42 @@ impl<
         self
     }
 
+    /// Registers a table without primary key for the bevy application with all messages enabled.
+    pub fn add_table_without_pk<TRow, TTable, F>(self, accessor: F) -> Self
+    where
+        TRow: Send + Sync + Clone + 'static,
+        TTable: Table<Row = TRow>,
+        F: 'static + Send + Sync + Fn(&'static C::DbView) -> TTable,
+    {
+        self.add_partial_table_without_pk(accessor, TableMessagesWithoutPrimaryKey::all())
+    }
+
+    ///Registers a table without primary key for the bevy application with the specified messages in the `messages` parameter.
+    pub fn add_partial_table_without_pk<TRow, TTable, F>(
+        mut self,
+        accessor: F,
+        messages: TableMessagesWithoutPrimaryKey,
+    ) -> Self
+    where
+        TRow: Send + Sync + Clone + 'static,
+        TTable: Table<Row = TRow>,
+        F: 'static + Send + Sync + Fn(&'static C::DbView) -> TTable,
+    {
+        // A closure that sets up messages for the table
+        let register = move |plugin: &Self, app: &mut App, db: &'static C::DbView| {
+            let table = accessor(db);
+            if messages.insert {
+                plugin.on_insert(app, &table);
+            }
+            if messages.delete {
+                plugin.on_delete(app, &table);
+            }
+        };
+        // Store this table, and later when the plugin is built, call them on .
+        self.table_registers.push(Box::new(register));
+        self
+    }
+
     /// Register a Bevy message of type InsertMessage<TRow> for the `on_insert` message on the provided table.
     fn on_insert<TRow>(&self, app: &mut App, table: &impl Table<Row = TRow>) -> &Self
     where

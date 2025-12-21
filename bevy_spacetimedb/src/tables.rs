@@ -16,6 +16,17 @@ use crate::AddMessageChannelAppExtensions;
 // #[allow(unused_imports)]
 use crate::{DeleteMessage, InsertMessage, InsertUpdateMessage, StdbPlugin, UpdateMessage};
 
+/// Internal message used by `add_view_with_pk` to buffer view inserts/deletes so we can
+/// coalesce them into `InsertMessage<TRow>`, `UpdateMessage<TRow>`, and `DeleteMessage<TRow>`
+/// without causing Bevy message access conflicts.
+///
+/// We keep this internal to avoid exposing view-specific plumbing as part of the public API.
+#[derive(bevy::prelude::Message)]
+struct ViewPkBufferedMessage<TRow> {
+    inserted: bool,
+    row: TRow,
+}
+
 /// Passed into [`StdbPlugin::add_table`] to determine which table messages to register.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TableMessages {
@@ -91,10 +102,14 @@ impl<TRow, TPk> Default for ViewPkReconcileState<TRow, TPk> {
     }
 }
 
+/// System that reconciles buffered view membership changes into `InsertMessage<TRow>`,
+/// `UpdateMessage<TRow>`, and `DeleteMessage<TRow>`.
+///
+/// We intentionally buffer via `ViewPkBufferedMessage` so the system does **not** read and write
+/// `Messages<InsertMessage<TRow>>` in the same system, which would trigger Bevy's `B0002` conflict.
 fn reconcile_view_pk_frame<TRow, TPk>(
     mut state: bevy::prelude::Local<ViewPkReconcileState<TRow, TPk>>,
-    mut view_inserts: MessageReader<InsertMessage<TRow>>,
-    mut view_deletes: MessageReader<DeleteMessage<TRow>>,
+    mut buffered: MessageReader<ViewPkBufferedMessage<TRow>>,
     mut out_inserts: MessageWriter<InsertMessage<TRow>>,
     mut out_updates: MessageWriter<UpdateMessage<TRow>>,
     mut out_deletes: MessageWriter<DeleteMessage<TRow>>,
@@ -103,16 +118,15 @@ fn reconcile_view_pk_frame<TRow, TPk>(
     TRow: Send + Sync + Clone + 'static,
     TPk: Send + Sync + Clone + Eq + Hash + 'static,
 {
-    // Collect all view changes for this frame, keyed by pk.
-    for msg in view_deletes.read() {
+    // Collect all buffered view changes for this frame, keyed by pk.
+    for msg in buffered.read() {
         let row = msg.row.clone();
         let k = (pk.0)(&row);
-        state.deleted.insert(k, row);
-    }
-    for msg in view_inserts.read() {
-        let row = msg.row.clone();
-        let k = (pk.0)(&row);
-        state.inserted.insert(k, row);
+        if msg.inserted {
+            state.inserted.insert(k, row);
+        } else {
+            state.deleted.insert(k, row);
+        }
     }
 
     // Move inserted rows out to avoid double-borrowing `state` mutably while coalescing.
@@ -240,10 +254,43 @@ impl<
         let pk_fn = std::sync::Arc::new(pk_fn);
 
         let register = move |plugin: &Self, app: &mut App, db: &'static C::DbView| {
-            // 1) Register raw view insert/delete messages as InsertMessage<Vec<TRow>> / DeleteMessage<Vec<TRow>>
+            // 1) Subscribe to the view and buffer its insert/delete callbacks into an internal message stream.
+            //
+            // We cannot directly use `InsertMessage<TRow>` / `DeleteMessage<TRow>` as the input stream because the
+            // reconcile system needs to write those same message types, and Bevy forbids read+write of the same
+            // `Messages<T>` resource in a single system (B0002).
             let view = accessor(db);
-            plugin.on_insert(app, &view);
-            plugin.on_delete(app, &view);
+
+            // Create buffered message channel (once per TRow).
+            let buffered_type_id = TypeId::of::<ViewPkBufferedMessage<TRow>>();
+            let buffered_sender: Sender<ViewPkBufferedMessage<TRow>> = {
+                let mut map = plugin.message_senders.lock().unwrap();
+                map.entry(buffered_type_id)
+                    .or_insert_with(|| {
+                        let (send, recv) = channel::<ViewPkBufferedMessage<TRow>>();
+                        app.add_message_channel(recv);
+                        Box::new(send)
+                    })
+                    .downcast_ref::<Sender<ViewPkBufferedMessage<TRow>>>()
+                    .expect("Sender type mismatch")
+                    .clone()
+            };
+
+            let send_insert = buffered_sender.clone();
+            view.on_insert(move |_ctx, row| {
+                let _ = send_insert.send(ViewPkBufferedMessage {
+                    inserted: true,
+                    row: row.clone(),
+                });
+            });
+
+            let send_delete = buffered_sender.clone();
+            view.on_delete(move |_ctx, row| {
+                let _ = send_delete.send(ViewPkBufferedMessage {
+                    inserted: false,
+                    row: row.clone(),
+                });
+            });
 
             // 2) Store pk function and install reconcile system once per (TRow, TPk) pair.
             //
@@ -265,10 +312,7 @@ impl<
                     (pk_fn)(row)
                 })));
 
-                // Ensure output message channels exist by touching senders.
-                // Insert/Update/Delete for TRow will be created by on_* when consumers register,
-                // but we also need writers to exist for the reconcile system.
-                // The message channels are created lazily by `add_message_channel`, so we force-create them here.
+                // Ensure output message channels exist by touching senders so writers can be used.
                 {
                     let type_id = TypeId::of::<InsertMessage<TRow>>();
                     map.entry(type_id).or_insert_with(|| {

@@ -1,9 +1,14 @@
 use std::{
     any::TypeId,
+    hash::Hash,
     sync::mpsc::{Sender, channel},
 };
 
-use bevy::app::App;
+use bevy::{
+    app::{App, Update},
+    platform::collections::HashMap,
+    prelude::{MessageReader, MessageWriter},
+};
 use spacetimedb_sdk::{__codegen as spacetime_codegen, Table, TableWithPrimaryKey};
 
 use crate::AddMessageChannelAppExtensions;
@@ -67,6 +72,73 @@ impl TableMessagesWithoutPrimaryKey {
     }
 }
 
+/// Per-frame reconciliation state for `add_view_with_pk`.
+///
+/// Stored as a Bevy `Local`, so it is reset per system instance and persists only across frames.
+struct ViewPkReconcileState<TRow, TPk> {
+    /// Rows that were deleted from the view this frame, keyed by primary key.
+    deleted: HashMap<TPk, TRow>,
+    /// Rows that were inserted into the view this frame, keyed by primary key.
+    inserted: HashMap<TPk, TRow>,
+}
+
+impl<TRow, TPk> Default for ViewPkReconcileState<TRow, TPk> {
+    fn default() -> Self {
+        Self {
+            deleted: HashMap::default(),
+            inserted: HashMap::default(),
+        }
+    }
+}
+
+fn reconcile_view_pk_frame<TRow, TPk>(
+    mut state: bevy::prelude::Local<ViewPkReconcileState<TRow, TPk>>,
+    mut view_inserts: MessageReader<InsertMessage<TRow>>,
+    mut view_deletes: MessageReader<DeleteMessage<TRow>>,
+    mut out_inserts: MessageWriter<InsertMessage<TRow>>,
+    mut out_updates: MessageWriter<UpdateMessage<TRow>>,
+    mut out_deletes: MessageWriter<DeleteMessage<TRow>>,
+    pk: bevy::prelude::Res<ViewPkFn<TRow, TPk>>,
+) where
+    TRow: Send + Sync + Clone + 'static,
+    TPk: Send + Sync + Clone + Eq + Hash + 'static,
+{
+    // Collect all view changes for this frame, keyed by pk.
+    for msg in view_deletes.read() {
+        let row = msg.row.clone();
+        let k = (pk.0)(&row);
+        state.deleted.insert(k, row);
+    }
+    for msg in view_inserts.read() {
+        let row = msg.row.clone();
+        let k = (pk.0)(&row);
+        state.inserted.insert(k, row);
+    }
+
+    // Move inserted rows out to avoid double-borrowing `state` mutably while coalescing.
+    let inserted = std::mem::take(&mut state.inserted);
+
+    // Coalesce delete+insert of same pk into UpdateMessage, otherwise forward as Insert/Delete.
+    for (k, new_row) in inserted {
+        if let Some(old_row) = state.deleted.remove(&k) {
+            out_updates.write(UpdateMessage {
+                old: old_row,
+                new: new_row,
+            });
+        } else {
+            out_inserts.write(InsertMessage { row: new_row });
+        }
+    }
+
+    // Any remaining deletions did not have a matching insertion this frame.
+    for (_k, old_row) in state.deleted.drain() {
+        out_deletes.write(DeleteMessage { row: old_row });
+    }
+}
+
+#[derive(bevy::prelude::Resource)]
+struct ViewPkFn<TRow, TPk>(Box<dyn Fn(&TRow) -> TPk + Send + Sync + 'static>);
+
 impl<
     C: spacetime_codegen::DbConnection<Module = M> + spacetimedb_sdk::DbContext,
     M: spacetime_codegen::SpacetimeModule<DbConnection = C>,
@@ -124,6 +196,109 @@ impl<
         F: 'static + Send + Sync + Fn(&'static C::DbView) -> TTable,
     {
         self.add_partial_table_without_pk(accessor, TableMessagesWithoutPrimaryKey::all())
+    }
+
+    /// Registers a *view-like* table (no `TableWithPrimaryKey`) whose row type *does* have a stable primary key,
+    /// and reconciles per-frame delete+insert pairs for the same key into [`UpdateMessage<TRow>`].
+    ///
+    /// ## Why this exists
+    /// SpacetimeDB codegen models `#[view(...)] fn ... -> Vec<T>` as a "table-like" handle that streams
+    /// individual rows `T` entering/leaving the view result set via `on_insert` / `on_delete`.
+    /// These generated view handles typically do **not** implement [`TableWithPrimaryKey`], even when `T`
+    /// contains a stable primary key (e.g. `Actor { id, ... }`), so consumers may observe `Delete`+`Insert`
+    /// for what is logically an update.
+    ///
+    /// `add_view_with_pk` fixes the Bevy-facing ergonomics by coalescing same-frame `Delete(pk)` + `Insert(pk)`
+    /// into a single [`UpdateMessage<TRow>`].
+    ///
+    /// The reconciliation happens in the same Bevy frame:
+    ///
+    /// - `Delete(pk)` + `Insert(pk)` in the same frame => `Update(old, new)`
+    /// - `Insert(pk)` only => `Insert(row)`
+    /// - `Delete(pk)` only => `Delete(row)`
+    ///
+    /// ## Limitations
+    /// - Only one `add_view_with_pk` registration is supported per `(TRow, TPk)` pair.
+    ///   Registering multiple views with the same `(TRow, TPk)` is not supported (the first registration wins).
+    ///
+    /// # Requirements
+    /// - The view must produce at most one row per primary key at a time (uniqueness by `pk_fn`).
+    pub fn add_view_with_pk<TRow, TPk, TView, FAcc, FPk>(
+        mut self,
+        accessor: FAcc,
+        pk_fn: FPk,
+    ) -> Self
+    where
+        TRow: Send + Sync + Clone + 'static,
+        TPk: Send + Sync + Clone + Eq + Hash + 'static,
+        TView: Table<Row = TRow>,
+        FAcc: 'static + Send + Sync + Fn(&'static C::DbView) -> TView,
+        FPk: 'static + Send + Sync + Fn(&TRow) -> TPk,
+    {
+        // `table_registers` stores `Fn`, not `FnOnce`, so we must not move `pk_fn` into the closure directly.
+        // Wrap it in an `Arc` so the closure can clone it each call.
+        let pk_fn = std::sync::Arc::new(pk_fn);
+
+        let register = move |plugin: &Self, app: &mut App, db: &'static C::DbView| {
+            // 1) Register raw view insert/delete messages as InsertMessage<Vec<TRow>> / DeleteMessage<Vec<TRow>>
+            let view = accessor(db);
+            plugin.on_insert(app, &view);
+            plugin.on_delete(app, &view);
+
+            // 2) Store pk function and install reconcile system once per (TRow, TPk) pair.
+            //
+            // We key by the reconcile system's TypeId so multiple views of the same (TRow,TPk) don't duplicate the system.
+            let reconcile_id = TypeId::of::<(TRow, TPk)>();
+
+            let mut map = plugin.message_senders.lock().unwrap();
+            let needs_install = !map.contains_key(&reconcile_id);
+            if needs_install {
+                // Marker entry so we only install once.
+                map.insert(
+                    reconcile_id,
+                    Box::new(()) as Box<dyn std::any::Any + Send + Sync>,
+                );
+
+                // Insert pk fn resource (clone `Arc` so we don't consume it).
+                let pk_fn = pk_fn.clone();
+                app.insert_resource(ViewPkFn::<TRow, TPk>(Box::new(move |row: &TRow| {
+                    (pk_fn)(row)
+                })));
+
+                // Ensure output message channels exist by touching senders.
+                // Insert/Update/Delete for TRow will be created by on_* when consumers register,
+                // but we also need writers to exist for the reconcile system.
+                // The message channels are created lazily by `add_message_channel`, so we force-create them here.
+                {
+                    let type_id = TypeId::of::<InsertMessage<TRow>>();
+                    map.entry(type_id).or_insert_with(|| {
+                        let (send, recv) = channel::<InsertMessage<TRow>>();
+                        app.add_message_channel(recv);
+                        Box::new(send)
+                    });
+
+                    let type_id = TypeId::of::<UpdateMessage<TRow>>();
+                    map.entry(type_id).or_insert_with(|| {
+                        let (send, recv) = channel::<UpdateMessage<TRow>>();
+                        app.add_message_channel(recv);
+                        Box::new(send)
+                    });
+
+                    let type_id = TypeId::of::<DeleteMessage<TRow>>();
+                    map.entry(type_id).or_insert_with(|| {
+                        let (send, recv) = channel::<DeleteMessage<TRow>>();
+                        app.add_message_channel(recv);
+                        Box::new(send)
+                    });
+                }
+
+                // Install reconcile system.
+                app.add_systems(Update, reconcile_view_pk_frame::<TRow, TPk>);
+            }
+        };
+
+        self.table_registers.push(Box::new(register));
+        self
     }
 
     ///Registers a table without primary key for the bevy application with the specified messages in the `messages` parameter.

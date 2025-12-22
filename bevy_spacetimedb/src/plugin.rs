@@ -31,6 +31,7 @@ pub struct StdbPlugin<
     // Tracks which `(TRow, TPk)` pairs have installed a view-with-pk reconciliation pipeline.
     // This is intentionally separate from `message_senders` for clarity and type-safety.
     pub(crate) view_pk_reconcilers: Mutex<HashSet<TypeId>>,
+
     #[allow(clippy::type_complexity)]
     pub(crate) table_registers: Vec<
         Box<dyn Fn(&StdbPlugin<C, M>, &mut App, &'static <C as DbContext>::DbView) + Send + Sync>,

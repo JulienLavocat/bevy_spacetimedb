@@ -1,5 +1,5 @@
 use std::{
-    any::TypeId,
+    any::{Any, TypeId},
     hash::Hash,
     sync::mpsc::{Sender, channel},
 };
@@ -7,7 +7,7 @@ use std::{
 use bevy::{
     app::{App, Update},
     platform::collections::HashMap,
-    prelude::{MessageReader, MessageWriter},
+    prelude::{Message, MessageReader, MessageWriter},
 };
 use spacetimedb_sdk::{__codegen as spacetime_codegen, Table, TableWithPrimaryKey};
 
@@ -16,11 +16,22 @@ use crate::AddMessageChannelAppExtensions;
 // #[allow(unused_imports)]
 use crate::{DeleteMessage, InsertMessage, InsertUpdateMessage, StdbPlugin, UpdateMessage};
 
+/// Ensure that a message channel exists for the given type.
+fn ensure_message_channel<T: Message>(
+    app: &mut App,
+    map: &mut HashMap<TypeId, Box<dyn Any + Send + Sync>>,
+) {
+    let type_id = TypeId::of::<T>();
+    map.entry(type_id).or_insert_with(|| {
+        let (send, recv) = channel::<T>();
+        app.add_message_channel(recv);
+        Box::new(send)
+    });
+}
+
 /// Internal message used by `add_view_with_pk` to buffer view inserts/deletes so we can
 /// coalesce them into `InsertMessage<TRow>`, `UpdateMessage<TRow>`, and `DeleteMessage<TRow>`
 /// without causing Bevy message access conflicts.
-///
-/// We keep this internal to avoid exposing view-specific plumbing as part of the public API.
 #[derive(bevy::prelude::Message)]
 enum ViewPkBufferedMessage<TRow> {
     Insert(TRow),
@@ -259,10 +270,6 @@ impl<
         let pk_fn = std::sync::Arc::new(pk_fn);
 
         let register = move |plugin: &Self, app: &mut App, db: &'static C::DbView| {
-            // Subscribe to the view and buffer its insert/delete callbacks into an internal message stream.
-            // We cannot directly use `InsertMessage<TRow>` / `DeleteMessage<TRow>` as the input stream because the
-            // reconcile system needs to write those same message types, and Bevy forbids read+write of the same
-            // `Messages<T>` resource in a single system (B0002).
             let view = accessor(db);
 
             // Create buffered message channel (once per TRow).
@@ -280,20 +287,16 @@ impl<
                     .clone()
             };
 
-            // Store pk function and install reconcile system once per (TRow, TPk) pair.
-            // We key by the reconcile system's TypeId so multiple views of the same (TRow,TPk) don't duplicate the system.
-            let reconcile_id = TypeId::of::<(TRow, TPk)>();
-
             // Enforce exactly one `add_view_with_pk` registration per (TRow, TPk) pair.
-            // If you attempt to register again, panic on startup so it is immediately visible in dev.
-            {
-                let mut installed = plugin.view_pk_reconcilers.lock().unwrap();
-                if !installed.insert(reconcile_id) {
-                    panic!(
-                        "add_view_with_pk was registered more than once for the same (TRow, TPk) pair. \
+            let mut installed = plugin
+                .view_pk_reconcilers
+                .lock()
+                .expect("Mutex to not be poisoned.");
+            if !installed.insert(TypeId::of::<(TRow, TPk)>()) {
+                panic!(
+                    "add_view_with_pk was registered more than once for the same (TRow, TPk) pair. \
 Only one registration is supported per unique (TRow, TPk)."
-                    );
-                }
+                );
             }
 
             let send_insert = buffered_sender.clone();
@@ -313,30 +316,10 @@ Only one registration is supported per unique (TRow, TPk)."
             })));
 
             // Ensure output message channels exist by touching senders so writers can be used.
-            {
-                let mut map = plugin.message_senders.lock().unwrap();
-
-                let type_id = TypeId::of::<InsertMessage<TRow>>();
-                map.entry(type_id).or_insert_with(|| {
-                    let (send, recv) = channel::<InsertMessage<TRow>>();
-                    app.add_message_channel(recv);
-                    Box::new(send)
-                });
-
-                let type_id = TypeId::of::<UpdateMessage<TRow>>();
-                map.entry(type_id).or_insert_with(|| {
-                    let (send, recv) = channel::<UpdateMessage<TRow>>();
-                    app.add_message_channel(recv);
-                    Box::new(send)
-                });
-
-                let type_id = TypeId::of::<DeleteMessage<TRow>>();
-                map.entry(type_id).or_insert_with(|| {
-                    let (send, recv) = channel::<DeleteMessage<TRow>>();
-                    app.add_message_channel(recv);
-                    Box::new(send)
-                });
-            }
+            let mut map = plugin.message_senders.lock().unwrap();
+            ensure_message_channel::<InsertMessage<TRow>>(app, &mut map);
+            ensure_message_channel::<UpdateMessage<TRow>>(app, &mut map);
+            ensure_message_channel::<DeleteMessage<TRow>>(app, &mut map);
 
             app.add_systems(Update, reconcile_view_pk_frame::<TRow, TPk>);
         };

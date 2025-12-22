@@ -29,7 +29,6 @@ pub struct StdbPlugin<
     pub(crate) message_senders: Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
 
     // Tracks which `(TRow, TPk)` pairs have installed a view-with-pk reconciliation pipeline.
-    // This is intentionally separate from `message_senders` for clarity and type-safety.
     pub(crate) view_pk_reconcilers: Mutex<HashSet<TypeId>>,
 
     #[allow(clippy::type_complexity)]

@@ -4,7 +4,7 @@ use crate::{
 };
 use bevy::{
     app::{App, Plugin},
-    platform::collections::HashMap,
+    platform::collections::{HashMap, HashSet},
 };
 use spacetimedb_sdk::{Compression, DbConnectionBuilder, DbContext};
 use std::{
@@ -27,6 +27,10 @@ pub struct StdbPlugin<
 
     // Stores Senders for registered table messages.
     pub(crate) message_senders: Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
+
+    // Tracks which `(TRow, TPk)` pairs have installed a view-with-pk reconciliation pipeline.
+    // This is intentionally separate from `message_senders` for clarity and type-safety.
+    pub(crate) view_pk_reconcilers: Mutex<HashSet<TypeId>>,
     #[allow(clippy::type_complexity)]
     pub(crate) table_registers: Vec<
         Box<dyn Fn(&StdbPlugin<C, M>, &mut App, &'static <C as DbContext>::DbView) + Send + Sync>,
@@ -51,6 +55,7 @@ impl<
             light_mode: false,
 
             message_senders: Mutex::default(),
+            view_pk_reconcilers: Mutex::default(),
             table_registers: Vec::default(),
             reducer_registers: Vec::default(),
         }

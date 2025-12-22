@@ -22,9 +22,9 @@ use crate::{DeleteMessage, InsertMessage, InsertUpdateMessage, StdbPlugin, Updat
 ///
 /// We keep this internal to avoid exposing view-specific plumbing as part of the public API.
 #[derive(bevy::prelude::Message)]
-struct ViewPkBufferedMessage<TRow> {
-    inserted: bool,
-    row: TRow,
+enum ViewPkBufferedMessage<TRow> {
+    Insert(TRow),
+    Delete(TRow),
 }
 
 /// Passed into [`StdbPlugin::add_table`] to determine which table messages to register.
@@ -120,12 +120,17 @@ fn reconcile_view_pk_frame<TRow, TPk>(
 {
     // Collect all buffered view changes for this frame, keyed by pk.
     for msg in buffered.read() {
-        let row = msg.row.clone();
-        let k = (pk.0)(&row);
-        if msg.inserted {
-            state.inserted.insert(k, row);
-        } else {
-            state.deleted.insert(k, row);
+        match msg {
+            ViewPkBufferedMessage::Insert(row) => {
+                let row = row.clone();
+                let k = (pk.0)(&row);
+                state.inserted.insert(k, row);
+            }
+            ViewPkBufferedMessage::Delete(row) => {
+                let row = row.clone();
+                let k = (pk.0)(&row);
+                state.deleted.insert(k, row);
+            }
         }
     }
 
@@ -254,8 +259,7 @@ impl<
         let pk_fn = std::sync::Arc::new(pk_fn);
 
         let register = move |plugin: &Self, app: &mut App, db: &'static C::DbView| {
-            // 1) Subscribe to the view and buffer its insert/delete callbacks into an internal message stream.
-            //
+            // Subscribe to the view and buffer its insert/delete callbacks into an internal message stream.
             // We cannot directly use `InsertMessage<TRow>` / `DeleteMessage<TRow>` as the input stream because the
             // reconcile system needs to write those same message types, and Bevy forbids read+write of the same
             // `Messages<T>` resource in a single system (B0002).
@@ -276,69 +280,65 @@ impl<
                     .clone()
             };
 
-            let send_insert = buffered_sender.clone();
-            view.on_insert(move |_ctx, row| {
-                let _ = send_insert.send(ViewPkBufferedMessage {
-                    inserted: true,
-                    row: row.clone(),
-                });
-            });
-
-            let send_delete = buffered_sender.clone();
-            view.on_delete(move |_ctx, row| {
-                let _ = send_delete.send(ViewPkBufferedMessage {
-                    inserted: false,
-                    row: row.clone(),
-                });
-            });
-
-            // 2) Store pk function and install reconcile system once per (TRow, TPk) pair.
-            //
+            // Store pk function and install reconcile system once per (TRow, TPk) pair.
             // We key by the reconcile system's TypeId so multiple views of the same (TRow,TPk) don't duplicate the system.
             let reconcile_id = TypeId::of::<(TRow, TPk)>();
 
-            let mut map = plugin.message_senders.lock().unwrap();
-            let needs_install = !map.contains_key(&reconcile_id);
-            if needs_install {
-                // Marker entry so we only install once.
-                map.insert(
-                    reconcile_id,
-                    Box::new(()) as Box<dyn std::any::Any + Send + Sync>,
-                );
-
-                // Insert pk fn resource (clone `Arc` so we don't consume it).
-                let pk_fn = pk_fn.clone();
-                app.insert_resource(ViewPkFn::<TRow, TPk>(Box::new(move |row: &TRow| {
-                    (pk_fn)(row)
-                })));
-
-                // Ensure output message channels exist by touching senders so writers can be used.
-                {
-                    let type_id = TypeId::of::<InsertMessage<TRow>>();
-                    map.entry(type_id).or_insert_with(|| {
-                        let (send, recv) = channel::<InsertMessage<TRow>>();
-                        app.add_message_channel(recv);
-                        Box::new(send)
-                    });
-
-                    let type_id = TypeId::of::<UpdateMessage<TRow>>();
-                    map.entry(type_id).or_insert_with(|| {
-                        let (send, recv) = channel::<UpdateMessage<TRow>>();
-                        app.add_message_channel(recv);
-                        Box::new(send)
-                    });
-
-                    let type_id = TypeId::of::<DeleteMessage<TRow>>();
-                    map.entry(type_id).or_insert_with(|| {
-                        let (send, recv) = channel::<DeleteMessage<TRow>>();
-                        app.add_message_channel(recv);
-                        Box::new(send)
-                    });
+            // Enforce exactly one `add_view_with_pk` registration per (TRow, TPk) pair.
+            // If you attempt to register again, panic on startup so it is immediately visible in dev.
+            {
+                let mut installed = plugin.view_pk_reconcilers.lock().unwrap();
+                if !installed.insert(reconcile_id) {
+                    panic!(
+                        "add_view_with_pk was registered more than once for the same (TRow, TPk) pair. \
+Only one registration is supported per unique (TRow, TPk)."
+                    );
                 }
-
-                // Install reconcile system.
-                app.add_systems(Update, reconcile_view_pk_frame::<TRow, TPk>);
             }
+
+            let send_insert = buffered_sender.clone();
+            view.on_insert(move |_ctx, row| {
+                let _ = send_insert.send(ViewPkBufferedMessage::Insert(row.clone()));
+            });
+
+            let send_delete = buffered_sender;
+            view.on_delete(move |_ctx, row| {
+                let _ = send_delete.send(ViewPkBufferedMessage::Delete(row.clone()));
+            });
+
+            // Insert pk fn resource (clone `Arc` so we don't consume it).
+            let pk_fn = pk_fn.clone();
+            app.insert_resource(ViewPkFn::<TRow, TPk>(Box::new(move |row: &TRow| {
+                (pk_fn)(row)
+            })));
+
+            // Ensure output message channels exist by touching senders so writers can be used.
+            {
+                let mut map = plugin.message_senders.lock().unwrap();
+
+                let type_id = TypeId::of::<InsertMessage<TRow>>();
+                map.entry(type_id).or_insert_with(|| {
+                    let (send, recv) = channel::<InsertMessage<TRow>>();
+                    app.add_message_channel(recv);
+                    Box::new(send)
+                });
+
+                let type_id = TypeId::of::<UpdateMessage<TRow>>();
+                map.entry(type_id).or_insert_with(|| {
+                    let (send, recv) = channel::<UpdateMessage<TRow>>();
+                    app.add_message_channel(recv);
+                    Box::new(send)
+                });
+
+                let type_id = TypeId::of::<DeleteMessage<TRow>>();
+                map.entry(type_id).or_insert_with(|| {
+                    let (send, recv) = channel::<DeleteMessage<TRow>>();
+                    app.add_message_channel(recv);
+                    Box::new(send)
+                });
+            }
+
+            app.add_systems(Update, reconcile_view_pk_frame::<TRow, TPk>);
         };
 
         self.table_registers.push(Box::new(register));

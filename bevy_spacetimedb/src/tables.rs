@@ -288,10 +288,7 @@ impl<
             };
 
             // Enforce exactly one `add_view_with_pk` registration per (TRow, TPk) pair.
-            let mut installed = plugin
-                .view_pk_reconcilers
-                .lock()
-                .expect("Mutex to not be poisoned.");
+            let mut installed = plugin.view_pk_reconcilers.lock().unwrap();
             if !installed.insert(TypeId::of::<(TRow, TPk)>()) {
                 panic!(
                     "add_view_with_pk was registered more than once for the same (TRow, TPk) pair. \

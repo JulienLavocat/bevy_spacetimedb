@@ -9,6 +9,7 @@ mod plugin;
 mod reducers;
 mod stdb_connection;
 mod tables;
+mod procedures;
 
 pub use aliases::*;
 #[cfg(feature = "macros")]

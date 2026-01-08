@@ -27,6 +27,10 @@ impl<T: DbContext> StdbConnection<T> {
         self.conn.reducers()
     }
 
+    pub fn procedures(&self) -> &T::Procedures {
+        self.conn.procedures()
+    }
+
     /// Get a builder-pattern constructor for subscribing to queries,
     /// causing matching rows to be replicated into the client cache.
     pub fn subscription_builder(&self) -> T::SubscriptionBuilder {

@@ -34,6 +34,9 @@ pub struct StdbPlugin<
     #[allow(clippy::type_complexity)]
     pub(crate) reducer_registers:
         Vec<Box<dyn Fn(&mut App, &<C as DbContext>::Reducers) + Send + Sync>>,
+    #[allow(clippy::type_complexity)]
+    pub(crate) procedure_registers:
+        Vec<Box<dyn Fn(&mut App, &<C as DbContext>::Procedures) + Send + Sync>>,
 }
 
 impl<
@@ -53,6 +56,7 @@ impl<
             message_senders: Mutex::default(),
             table_registers: Vec::default(),
             reducer_registers: Vec::default(),
+            procedure_registers: Vec::default(),
         }
     }
 }
@@ -181,6 +185,9 @@ impl<
         }
         for reducer_register in self.reducer_registers.iter() {
             reducer_register(app, conn.reducers());
+        }
+        for procedure_register in self.procedure_registers.iter() {
+            procedure_register(app, conn.procedures());
         }
 
         let run_fn = self.run_fn.expect("No run function specified!");

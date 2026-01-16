@@ -111,7 +111,10 @@ impl<
         };
 
         // Store this table, and later when the plugin is built, call them on .
-        self.table_registers.lock().unwrap().push(Box::new(register));
+        self.table_registers
+            .lock()
+            .unwrap()
+            .push(Box::new(register));
 
         self
     }
@@ -128,7 +131,7 @@ impl<
 
     ///Registers a table without primary key for the bevy application with the specified messages in the `messages` parameter.
     pub fn add_partial_table_without_pk<TRow, TTable, F>(
-        mut self,
+        self,
         accessor: F,
         messages: TableMessagesWithoutPrimaryKey,
     ) -> Self
@@ -148,7 +151,10 @@ impl<
             }
         };
         // Store this table, and later when the plugin is built, call them on .
-        self.table_registers.push(Box::new(register));
+        self.table_registers
+            .lock()
+            .unwrap()
+            .push(Box::new(register));
         self
     }
 

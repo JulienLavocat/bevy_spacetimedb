@@ -17,7 +17,7 @@ pub use bevy_spacetimedb_macros::*;
 
 pub use channel_receiver::AddMessageChannelAppExtensions;
 pub use messages::*;
-pub use plugin::*;
+pub use plugin::{StdbPlugin, StdbPluginConfig, connect_with_token};
 pub use reducers::RegisterableReducerMessage;
 pub use stdb_connection::*;
 pub use tables::{TableMessages, TableMessagesWithoutPrimaryKey};

@@ -82,4 +82,3 @@ impl<T> ProcedureResultMessage<T> {
         Self { result }
     }
 }
-

@@ -114,6 +114,7 @@ pub fn connect_with_token<
         message_senders: Arc::clone(&plugin_data.message_senders),
         table_registers: Arc::new(Mutex::new(Vec::new())),
         reducer_registers: Arc::new(Mutex::new(Vec::new())),
+        procedure_registers: Arc::new(Mutex::new(Vec::new())),
     };
     
     // Register tables with the real connection
@@ -156,6 +157,9 @@ pub struct StdbPlugin<
     #[allow(clippy::type_complexity)]
     pub(crate) reducer_registers:
         Arc<Mutex<Vec<Box<dyn Fn(&mut App, &<C as DbContext>::Reducers) + Send + Sync>>>>,
+    #[allow(clippy::type_complexity)]
+    pub(crate) procedure_registers:
+        Arc<Mutex<Vec<Box<dyn Fn(&mut App, &<C as DbContext>::Procedures) + Send + Sync>>>>,
 }
 
 impl<
@@ -176,6 +180,7 @@ impl<
             message_senders: Arc::new(Mutex::default()),
             table_registers: Arc::new(Mutex::new(Vec::default())),
             reducer_registers: Arc::new(Mutex::new(Vec::default())),
+            procedure_registers: Arc::new(Mutex::new(Vec::default())),
         }
     }
 }

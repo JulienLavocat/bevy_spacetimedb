@@ -1,7 +1,7 @@
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Fields, Ident};
+use syn::{parse_macro_input, parse_str, Data, DeriveInput, Fields, Ident, Path};
 
 /// This macro automatically generates the boilerplate code needed to register a reducer
 /// with the `StdbPlugin`.
@@ -77,6 +77,58 @@ pub fn register_reducer_message_derive(input: TokenStream) -> TokenStream {
                         .unwrap();
                 });
             }
+        }
+    };
+
+    TokenStream::from(expanded)
+}
+
+#[proc_macro_derive(RegisterTable)]
+pub fn register_table_derive(input: TokenStream) -> TokenStream {
+    register_table(
+        parse_str("bevy_spacetimedb::RegisterableTable").expect("Known type failed to parse"),
+        input,
+    )
+}
+
+#[proc_macro_derive(RegisterTableWithoutPk)]
+pub fn register_table_without_pk_derive(input: TokenStream) -> TokenStream {
+    register_table(
+        parse_str("bevy_spacetimedb::RegisterableTableWithoutPk")
+            .expect("Known type failed to parse"),
+        input,
+    )
+}
+
+fn register_table(trait_name: Path, input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let struct_name = &input.ident;
+    let struct_name_str = struct_name.to_string();
+
+    let table_name = struct_name_str
+        .strip_suffix("Table")
+        .unwrap_or(&struct_name_str);
+    let table_handle_name = Ident::new(&format!("{}TableHandle", table_name), struct_name.span());
+    let table_name_snake_case = Ident::new(&table_name.to_snake_case(), struct_name.span());
+
+    let expanded = quote! {
+        impl #trait_name<DbConnection, RemoteModule> for #struct_name {
+            type Row = <#table_handle_name<'static> as spacetimedb_sdk::Table>::Row;
+            type Reducer = Reducer;
+            type Table = #table_handle_name<'static>;
+            type Message = Self;
+
+            fn table_accessor(db_context: &'static RemoteTables) -> Self::Table {
+                db_context.#table_name_snake_case()
+            }
+
+            fn context_event_accessor(ctx: &<Self::Table as spacetimedb_sdk::Table>::EventContext) -> spacetimedb_sdk::Event<Self::Reducer> {
+                ctx.event.clone()
+            }
+        }
+        impl bevy_spacetimedb::TableMessage for #struct_name {
+            type Row = <#table_handle_name<'static> as spacetimedb_sdk::Table>::Row;
+            type Reducer = Reducer;
         }
     };
 

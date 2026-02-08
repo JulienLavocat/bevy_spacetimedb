@@ -27,7 +27,7 @@ pub struct StdbConnectionErrorMessage {
 
 /// A message that is emitted when a row is inserted into a table.
 #[derive(Message)]
-pub struct InsertMessage<T> where T : TableMessage {
+pub struct InsertMessage<T> where T: TableMessage {
     pub event: Event<T::Reducer>,
     /// The row that was inserted.
     pub row: T::Row,
@@ -35,7 +35,7 @@ pub struct InsertMessage<T> where T : TableMessage {
 
 /// A message that is emitted when a row is deleted from a table.
 #[derive(Message)]
-pub struct DeleteMessage<T> where T : TableMessage {
+pub struct DeleteMessage<T> where T: TableMessage {
     pub event: Event<T::Reducer>,
     /// The row that was deleted.
     pub row: T::Row,
@@ -43,7 +43,7 @@ pub struct DeleteMessage<T> where T : TableMessage {
 
 /// A message that is emitted when a row is updated in a table.
 #[derive(Message)]
-pub struct UpdateMessage<T> where T : TableMessage {
+pub struct UpdateMessage<T> where T: TableMessage {
     pub event: Event<T::Reducer>,
     /// The old row.
     pub old: T::Row,
@@ -53,7 +53,7 @@ pub struct UpdateMessage<T> where T : TableMessage {
 
 /// A message that is emitted when a row is inserted or updated in a table.
 #[derive(Message)]
-pub struct InsertUpdateMessage<T> where T : TableMessage {
+pub struct InsertUpdateMessage<T> where T: TableMessage {
     pub event: Event<T::Reducer>,
     /// The previous value of the row if it was updated.
     pub old: Option<T::Row>,

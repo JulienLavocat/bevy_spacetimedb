@@ -221,8 +221,8 @@ impl<
     ///
     /// If the passed token is invalid or rejected by the host,
     /// the connection will fail asynchrnonously.
-    pub fn with_token(mut self, token: impl Into<String>) -> Self {
-        self.token = Some(token.into());
+    pub fn with_token(mut self, token: impl Into<Option<String>>) -> Self {
+        self.token = token.into();
         self
     }
 

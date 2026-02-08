@@ -6,10 +6,10 @@ mod aliases;
 mod channel_receiver;
 mod messages;
 mod plugin;
+mod procedures;
 mod reducers;
 mod stdb_connection;
 mod tables;
-mod procedures;
 
 pub use aliases::*;
 #[cfg(feature = "macros")]
@@ -20,4 +20,7 @@ pub use messages::*;
 pub use plugin::{StdbPlugin, StdbPluginConfig, connect_with_token};
 pub use reducers::RegisterableReducerMessage;
 pub use stdb_connection::*;
-pub use tables::{TableMessages, TableMessagesWithoutPrimaryKey};
+pub use tables::{
+    RegisterableTable, RegisterableTableWithoutPk, TableMessage, TableMessages,
+    TableMessagesWithoutPrimaryKey,
+};

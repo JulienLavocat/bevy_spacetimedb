@@ -15,21 +15,6 @@ pub trait TableMessage where Self:Sized {
     type Reducer: Send + Sync + Clone + 'static;
 }
 
-pub trait RegisterableTable<C, M>
-where
-    C: spacetime_codegen::DbConnection<Module = M> + spacetimedb_sdk::DbContext,
-    M: spacetime_codegen::SpacetimeModule<DbConnection = C>,
-    Self: Sized,
-{
-    type Row: Send + Sync + Clone + 'static;
-    type Reducer: Send + Sync + Clone + 'static;
-    type Table: Table<Row = Self::Row> + TableWithPrimaryKey<Row = Self::Row>;
-    type Message: TableMessage<Row = Self::Row, Reducer = Self::Reducer>;
-
-    fn table_accessor(db_context: &'static C::DbView) -> Self::Table;
-    fn context_event_accessor(ctx: &<Self::Table as Table>::EventContext) -> Event<Self::Reducer>;
-}
-
 pub trait RegisterableTableWithoutPk<C, M>
 where
     C: spacetime_codegen::DbConnection<Module = M> + spacetimedb_sdk::DbContext,
@@ -43,6 +28,15 @@ where
 
     fn table_accessor(db_context: &'static C::DbView) -> Self::Table;
     fn context_event_accessor(ctx: &<Self::Table as Table>::EventContext) -> Event<Self::Reducer>;
+}
+
+pub trait RegisterableTable<C, M>: RegisterableTableWithoutPk<C, M>
+where
+    C: spacetime_codegen::DbConnection<Module = M> + spacetimedb_sdk::DbContext,
+    M: spacetime_codegen::SpacetimeModule<DbConnection = C>,
+    Self: Sized,
+{
+    type Table: Table<Row = Self::Row> + TableWithPrimaryKey<Row = Self::Row>;
 }
 
 /// Passed into [`StdbPlugin::add_table`] to determine which table messages to register.

@@ -1,7 +1,6 @@
 use spacetimedb::SpacetimeType;
 
-/// A 3-dimensional vector in a right-handed, Y-up coordinate system. This serves
-/// as a Serializable struct for SpacetimeDB with nalgebra [From] impls for math work.
+/// A 3-dimensional vector in a right-handed, Y-up coordinate system.
 ///
 /// +X is "right", -X is "left"
 /// +Y is "up", -Y is "down"
@@ -59,7 +58,7 @@ impl Vec3 {
 }
 
 /// A 2-dimensional vector, representing the horizontal plane (X, Z) of the 3d world.
-/// This serves as a Serializable struct for SpacetimeDB with nalgebra [From] impls for math work.
+///
 /// This is intentionally kept as x/z instead of x/y to avoid confusion with what the values are representing,
 /// however nalgebra uses xy since it doesn't assume a coordinate system or dimensionality.
 #[derive(SpacetimeType, Debug, Default, Clone, Copy, PartialEq)]

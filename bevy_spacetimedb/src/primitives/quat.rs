@@ -1,7 +1,6 @@
 use spacetimedb::SpacetimeType;
 
 /// A quaternion representing 3D rotation (orientation) in a right-handed, Y-up coordinate system.
-/// This serves as a Serializable struct for SpacetimeDB with nalgebra [From] impls.
 ///
 /// Positive rotation is counter-clockwise when looking down the axis toward the origin.
 ///

@@ -4,7 +4,7 @@ use crate::{
 };
 use bevy::{
     app::{App, Plugin},
-    platform::collections::HashMap,
+    platform::collections::{HashMap, HashSet},
     prelude::Resource,
 };
 use std::marker::PhantomData;
@@ -150,6 +150,9 @@ pub struct StdbPlugin<
 
     // Stores Senders for registered table messages.
     pub(crate) message_senders: Arc<Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>>,
+  
+    // Tracks which `(TRow, TPk)` pairs have installed a view-with-pk reconciliation pipeline.
+    pub(crate) view_pk_reconcilers: Mutex<HashSet<TypeId>>,
     #[allow(clippy::type_complexity)]
     pub(crate) table_registers: Arc<Mutex<Vec<
         Box<dyn Fn(&StdbPlugin<C, M>, &mut App, &'static <C as DbContext>::DbView) + Send + Sync>,
@@ -176,7 +179,7 @@ impl<
             compression: Some(Compression::default()),
             light_mode: false,
             delayed_connect: false,  // NEW: Default to immediate connection
-
+            view_pk_reconcilers: Mutex::default(),
             message_senders: Arc::new(Mutex::default()),
             table_registers: Arc::new(Mutex::new(Vec::default())),
             reducer_registers: Arc::new(Mutex::new(Vec::default())),

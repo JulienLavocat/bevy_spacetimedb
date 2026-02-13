@@ -14,6 +14,8 @@ mod channel_receiver;
 mod input;
 mod messages;
 mod plugin;
+#[cfg(feature = "server")]
+mod primitives;
 mod procedures;
 mod reducers;
 mod stdb_connection;
@@ -24,6 +26,8 @@ pub use aliases::*;
 pub use bevy_spacetimedb_macros::*;
 #[cfg(feature = "server")]
 pub use input::*;
+#[cfg(feature = "server")]
+pub use primitives::*;
 
 pub use channel_receiver::AddMessageChannelAppExtensions;
 pub use messages::*;

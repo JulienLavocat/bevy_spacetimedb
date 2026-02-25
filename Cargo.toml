@@ -4,7 +4,7 @@ resolver = "3"
 
 [workspace.dependencies]
 bevy = { version = "0.18", default-features = false, features = [
-    "std",
-    "bevy_log",
+  "std",
+  "bevy_log",
 ] }
-spacetimedb-sdk = { version = "1.11.1" }
+spacetimedb-sdk = { version = "2.0.0" }

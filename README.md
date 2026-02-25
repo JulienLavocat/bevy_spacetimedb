@@ -27,13 +27,13 @@ Check the example app in `/example_app` for a complete example of how to use the
 
 ## Bevy versions
 
-This plugin is compatible with Bevy 0.15.x, 0.16.x, and 0.17.x; the latest version targets Bevy 0.17.x.
+This plugin is compatible with Bevy 0.15.x, 0.16.x, 0.17.x, and 0.18.x; the latest version targets Bevy 0.18.x.
 
 | bevy_spacetimedb version | Bevy version |
 | ------------------------ | ------------ |
 | <= 0.3.x                 | 0.15.x       |
 | 0.4.x - 1.0.x            | 0.16.x       |
-| >= 0.7.0                 | 0.17.x       |
+| >= 0.7.0                 | 0.18.x       |
 
 ## Usage
 

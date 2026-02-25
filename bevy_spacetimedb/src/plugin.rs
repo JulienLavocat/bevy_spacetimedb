@@ -24,7 +24,6 @@ pub struct StdbPluginConfig<
     pub uri: String,
     pub run_fn: fn(&C) -> JoinHandle<()>,
     pub compression: Compression,
-    pub light_mode: bool,
     pub send_connected: Sender<StdbConnectedMessage>,
     pub send_disconnected: Sender<StdbDisconnectedMessage>,
     pub send_connect_error: Sender<StdbConnectionErrorMessage>,
@@ -73,11 +72,10 @@ pub fn connect_with_token<
     let send_connect_error = config.send_connect_error.clone();
     
     let conn = DbConnectionBuilder::<M>::new()
-        .with_module_name(config.module_name)
+        .with_database_name(config.module_name)
         .with_uri(config.uri)
         .with_token(token)
         .with_compression(config.compression)
-        .with_light_mode(config.light_mode)
         .on_connect_error(move |_ctx, err| {
             send_connect_error
                 .send(StdbConnectionErrorMessage { err })
@@ -109,7 +107,6 @@ pub fn connect_with_token<
         token: None,
         run_fn: None,
         compression: None,
-        light_mode: false,
         delayed_connect: false,
         message_senders: Arc::clone(&plugin_data.message_senders),
         table_registers: Arc::new(Mutex::new(Vec::new())),
@@ -145,7 +142,6 @@ pub struct StdbPlugin<
     token: Option<String>,
     run_fn: Option<fn(&C) -> JoinHandle<()>>,
     compression: Option<Compression>,
-    light_mode: bool,
     delayed_connect: bool,  // NEW: Skip immediate connection
 
     // Stores Senders for registered table messages.
@@ -174,7 +170,6 @@ impl<
             token: None,
             run_fn: None,
             compression: Some(Compression::default()),
-            light_mode: false,
             delayed_connect: false,  // NEW: Default to immediate connection
 
             message_senders: Arc::new(Mutex::default()),
@@ -236,20 +231,6 @@ impl<
         self
     }
 
-    /// Sets whether the "light" mode is used.
-    ///
-    /// The light mode is meant for clients which are network-bandwidth constrained
-    /// and results in non-callers receiving only light incremental updates.
-    /// These updates will not include information about the reducer that caused them,
-    /// but will contain updates to subscribed-to tables.
-    /// As a consequence, when light-mode is enabled,
-    /// non-callers will not receive reducer callbacks,
-    /// but will receive callbacks for row insertion/deletion/updates.
-    pub fn with_light_mode(mut self, light_mode: bool) -> Self {
-        self.light_mode = light_mode;
-        self
-    }
-
     /// Enable delayed connection mode. The connection will not be started
     /// during plugin build. You must manually call `connect_with_token()` later.
     ///
@@ -288,7 +269,6 @@ impl<
                 uri: self.uri.clone().unwrap(),
                 run_fn: self.run_fn.expect("No run function specified!"),
                 compression: self.compression.unwrap_or_default(),
-                light_mode: self.light_mode,
                 send_connected,
                 send_disconnected,
                 send_connect_error,
@@ -308,11 +288,10 @@ impl<
 
         // FIXME App should not crash if intial connection fails.
         let conn = DbConnectionBuilder::<M>::new()
-            .with_module_name(self.module_name.clone().unwrap())
+            .with_database_name(self.module_name.clone().unwrap())
             .with_uri(self.uri.clone().unwrap())
             .with_token(self.token.clone())
             .with_compression(self.compression.unwrap_or_default())
-            .with_light_mode(self.light_mode)
             .on_connect_error(move |_ctx, err| {
                 send_connect_error
                     .send(StdbConnectionErrorMessage { err })

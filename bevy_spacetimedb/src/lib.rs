@@ -17,7 +17,28 @@ pub use bevy_spacetimedb_macros::*;
 
 pub use channel_receiver::AddMessageChannelAppExtensions;
 pub use messages::*;
-pub use plugin::{StdbPlugin, StdbPluginConfig, connect_with_token};
-pub use reducers::RegisterableReducerMessage;
+pub use plugin::{StdbPlugin, StdbPluginConfig, ConnectionRunner, connect_with_token};
 pub use stdb_connection::*;
 pub use tables::{TableMessages, TableMessagesWithoutPrimaryKey};
+
+/// Implements [`ConnectionRunner`] for a generated `DbConnection` type.
+///
+/// This handles the platform-specific event loop dispatch so your code
+/// doesn't need any `#[cfg]` attributes:
+///
+/// ```ignore
+/// bevy_spacetimedb::impl_connection_runner!(DbConnection);
+/// ```
+#[macro_export]
+macro_rules! impl_connection_runner {
+    ($conn_ty:ty) => {
+        impl $crate::ConnectionRunner for $conn_ty {
+            fn start_event_loop(&self) {
+                #[cfg(not(target_arch = "wasm32"))]
+                { self.run_threaded(); }
+                #[cfg(target_arch = "wasm32")]
+                { self.run_background_task(); }
+            }
+        }
+    };
+}

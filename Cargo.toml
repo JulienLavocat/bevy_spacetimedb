@@ -7,4 +7,4 @@ bevy = { version = "0.18", default-features = false, features = [
     "std",
     "bevy_log",
 ] }
-spacetimedb-sdk = { version = "1.11.1" }
+spacetimedb-sdk = { version = "2.1" }

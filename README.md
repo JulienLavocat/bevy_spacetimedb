@@ -23,8 +23,6 @@ This plugin will provide you with:
   - `ReadInsertUpdateMessage<T>`
   - `ReadDeleteMessage<T>`
 
-Check the example app in `/example_app` for a complete example of how to use the plugin.
-
 ## Bevy versions
 
 This plugin is compatible with Bevy 0.15.x, 0.16.x, and 0.17.x; the latest version targets Bevy 0.17.x.
